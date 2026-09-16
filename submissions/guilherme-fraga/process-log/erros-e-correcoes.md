@@ -22,3 +22,10 @@
 - **Proposta da IA:** "Decidir" sem score de fila e sem critério de ordenação.
 - **Correção:** ordenar por **valor** (`sales_price`) decrescente, desempate por idade decrescente, para o manager limpar os grandes primeiro.
 - **Causa raiz:** a IA tratou "sai da fila normal" como "não precisa de ordem". Uma lista de 1.291 deals sem ordem não é uma lista de decisão — é uma pilha. Faltou perguntar quem consome essa lista (o manager) e o que ele faz com ela.
+
+## 4. `git add -f` em diretório arrastou `__pycache__` para o commit
+
+- **Etapa:** commit do motor (`aff9516`), parte 1 do build.
+- **O que aconteceu:** a IA rodou `git add -f solution/src solution/tests` (diretórios). O `-f` existe porque o `.gitignore` raiz ignora `submissions/`, mas ele também passa por cima do `.gitignore` da própria pasta — e levou 5 arquivos `.pyc` junto. Corrigido em commit separado (`64affb6`, `git rm --cached`), sem amend.
+- **Correção de processo:** `git add -f` só em **arquivos** novos, nomeados um a um. Nunca em diretório.
+- **Causa raiz:** a IA tratou o `-f` como "necessário por causa do ignore raiz" e esqueceu que ele é global: força tudo, inclusive o que o ignore local deveria segurar. Erro de processo, não de código — conta igual.
