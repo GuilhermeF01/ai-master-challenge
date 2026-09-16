@@ -36,26 +36,68 @@ def test_pesos_somam_100():
         ScoringConfig(w_f1=50, w_f2=50, w_f3=50)
 
 
-def test_f2_e_um_u(calib):
-    z = calib.zones.set_index("zona")["f2"]
-    assert z["0–14"] == 100 and z["91–parede"] == 100
-    assert z["61–90"] > z["15–60"]
-    # a curva dá 20 no vale; o piso de produto sobe para 35 (05-backtest)
-    assert calib.zones.set_index("zona")["f2_curva"]["15–60"] == 20 and z["15–60"] == 35
-    assert min(z["0–14"], z["91–parede"]) > z["61–90"]
+def test_f2_degraus_sao_propriedades_nao_numeros_decorados(calib):
+    z = calib.zones.set_index("zona")
+    assert z["f2"]["0–14"] == 100  # referência: a zona 0–14 é a escala
+    assert ((z["f2"] >= 0) & (z["f2"] <= 100)).all()
+    assert z["f2_curva"]["91–parede"] < 100  # a última zona não satura por construção (revisão B1)
+    assert z["f2_curva"]["61–90"] > z["f2_curva"]["15–60"]  # segunda onda existe nos dados
+    assert z["f2"]["15–60"] == max(z["f2_curva"]["15–60"], ScoringConfig().vale_minimo)  # piso de produto
     assert calib.wall_days == 138
+    assert calib.cohort_start == pd.Timestamp("2017-03-01") and calib.notes["n_censurados"] > 1000
+
+
+def test_censura_derruba_a_ultima_faixa(crm):
+    """Sem os abertos no conjunto de risco, 'vivos' na última faixa == 'decididos' e o degrau vai a 100."""
+    closed, open_deals = split_pipeline(crm.pipeline)
+    sem = calibrate(closed, crm.products).zones.set_index("zona")["f2_curva"]
+    com = calibrate(closed, crm.products, open_deals=open_deals).zones.set_index("zona")["f2_curva"]
+    assert sem["91–parede"] == 100 and com["91–parede"] < 60
+    assert sem["0–14"] == com["0–14"] == 100
+
+
+def _pipeline_sintetico(durations: np.ndarray, seed: int = 0) -> pd.DataFrame:
+    """Deals engajados ao longo de 400 dias; quem fecharia depois da referência fica aberto (censurado)."""
+    rng = np.random.default_rng(seed)
+    n = len(durations)
+    engage = pd.Timestamp("2017-01-01") + pd.to_timedelta(rng.integers(0, 400, n), "D")
+    close = engage + pd.to_timedelta(durations, "D")
+    ref = pd.Timestamp("2018-02-04")  # 400 dias depois do início
+    closed = close <= ref
+    stage = np.where(closed, np.where(rng.random(n) < 0.6, "Won", "Lost"), "Engaging")
+    return pd.DataFrame({
+        "opportunity_id": [f"S{i}" for i in range(n)], "sales_agent": "X", "product": "GTX Basic",
+        "account": None, "deal_stage": stage, "engage_date": engage,
+        "close_date": pd.Series(close).where(closed, pd.NaT), "close_value": 0.0,
+    })
+
+
+def test_hazard_constante_da_curva_plana(crm):
+    """Durações geométricas = hazard constante: todas as zonas têm que sair na mesma altura.
+
+    (Durações *uniformes* não dão curva plana num hazard: quem chega vivo ao fim fecha com
+    certeza, o hazard sobe por definição. O caso plano de um hazard é o geométrico.)"""
+    rng = np.random.default_rng(1)
+    dur = rng.geometric(p=0.02, size=40_000)  # 2% ao dia, média 50 dias
+    pipe = _pipeline_sintetico(dur)
+    closed, open_deals = split_pipeline(pipe)
+    c = calibrate(closed, crm.products, ScoringConfig(vale_minimo=0), open_deals=open_deals)
+    z = c.zones.set_index("zona")["f2_curva"]
+    assert z["0–14"] == 100
+    assert (z.drop("0–14") >= 85).all(), z.to_dict()  # plana dentro do ruído
+    assert (c.curve["por_dia"].between(0.016, 0.024)).all(), c.curve[["faixa", "por_dia"]].to_dict("records")
 
 
 def test_f2_override_so_quando_pedido(crm):
-    closed, _ = split_pipeline(crm.pipeline)
-    padrao = calibrate(closed, crm.products).zones.set_index("zona")["f2"]
+    closed, open_deals = split_pipeline(crm.pipeline)
+    padrao = calibrate(closed, crm.products, open_deals=open_deals).zones.set_index("zona")["f2"]
     assert padrao["15–60"] == 35
-    forcado = calibrate(closed, crm.products, ScoringConfig(f2_overrides=(("15–60", 50),))).zones.set_index("zona")["f2"]
+    forcado = calibrate(closed, crm.products, ScoringConfig(f2_overrides=(("15–60", 50),)), open_deals=open_deals).zones.set_index("zona")["f2"]
     assert forcado["15–60"] == 50 and forcado["61–90"] == padrao["61–90"]
-    sem_piso = calibrate(closed, crm.products, ScoringConfig(vale_minimo=0)).zones.set_index("zona")["f2"]
-    assert sem_piso["15–60"] == 20
+    sem_piso = calibrate(closed, crm.products, ScoringConfig(vale_minimo=0), open_deals=open_deals).zones.set_index("zona")["f2"]
+    assert sem_piso["15–60"] < 35
     with pytest.raises(ValueError):
-        calibrate(closed, crm.products, ScoringConfig(f2_overrides=(("nada", 1),)))
+        calibrate(closed, crm.products, ScoringConfig(f2_overrides=(("nada", 1),)), open_deals=open_deals)
 
 
 def test_celula_pequena_nao_manda():
@@ -140,9 +182,6 @@ def test_empate_no_score_janela_critica_primeiro(scored):
     for score, grupo in a.groupby("score"):
         flags = critica.loc[grupo.index].tolist()
         assert flags == sorted(flags, reverse=True), f"score {score}: janela crítica deveria vir antes"
-    # o caso concreto: Boris Faz tem dois GTX Pro empatados, o de 12 dias vem antes do de 117
-    boris = a[(a["vendedor"] == "Boris Faz") & (a["produto"] == "GTX Pro")]
-    assert boris["score"].nunique() == 1 and boris["idade_dias"].tolist()[:2] == [12, 117]
 
 
 def test_confianca(scored):

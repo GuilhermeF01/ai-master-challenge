@@ -20,7 +20,7 @@ OUTPUT = SOLUTION_DIR / "output" / "pipeline_scored.csv"
 def main(output: Path = OUTPUT) -> pd.DataFrame:
     crm = load_crm()
     closed, open_deals = split_pipeline(crm.pipeline)
-    calib = calibrate(closed, crm.products)
+    calib = calibrate(closed, crm.products, open_deals=open_deals)
     scored = score_open_deals(open_deals, calib, crm.teams, crm.accounts)
 
     output.parent.mkdir(parents=True, exist_ok=True)

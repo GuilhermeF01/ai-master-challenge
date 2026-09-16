@@ -34,7 +34,7 @@ AVISO = ("**O score é uma fila de atenção, não probabilidade de fechar.** "
 def carregar() -> tuple[pd.DataFrame, dict]:
     crm = load_crm()
     closed, open_deals = split_pipeline(crm.pipeline)
-    calib = calibrate(closed, crm.products)
+    calib = calibrate(closed, crm.products, open_deals=open_deals)
     scored = score_open_deals(open_deals, calib, crm.teams, crm.accounts)
     meta = {
         "referencia": scored.attrs["reference_date"],

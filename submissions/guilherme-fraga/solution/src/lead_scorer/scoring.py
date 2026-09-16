@@ -70,12 +70,14 @@ class Calibration:
     wall_days: int  # maior duração em Engaging entre os fechados (138)
     vendor: pd.DataFrame  # index sales_agent: won, n, raw, suav
     cell: pd.DataFrame  # index (sales_agent, product): won, n, raw, suav
-    curve: pd.DataFrame  # faixas finas: desfechos, vivos, por_dia
-    zones: pd.DataFrame  # zonas do U: lo, hi, f2
+    curve: pd.DataFrame  # faixas finas: desfechos, vivos, exposicao_dias, por_dia
+    zones: pd.DataFrame  # zonas do U: lo, hi, f2, f2_curva
     products: pd.DataFrame  # index product: sales_price, f3, rank (1 = mais caro)
+    reference_date: pd.Timestamp | None = None  # "hoje" do snapshot: última data dos dados
+    cohort_start: pd.Timestamp | None = None  # primeiro fechamento: coortes engajadas antes ficam fora da curva
     n_closed: int = 0
     n_won: int = 0
-    notes: dict = field(default_factory=dict)
+    notes: dict = field(default_factory=dict)  # números que as frases usam (calculados, não hard-coded)
 
     # --- lookups -----------------------------------------------------------
 
@@ -95,14 +97,38 @@ def _shrink(won: float, n: float, prior: float, k: int) -> float:
     return (won + k * prior) / (n + k)
 
 
-def calibrate(closed: pd.DataFrame, products: pd.DataFrame, config: ScoringConfig | None = None) -> Calibration:
-    """Calcula tudo que o scoring precisa a partir do histórico (Won/Lost)."""
+def calibrate(
+    closed: pd.DataFrame,
+    products: pd.DataFrame,
+    config: ScoringConfig | None = None,
+    open_deals: pd.DataFrame | None = None,
+    reference_date: pd.Timestamp | None = None,
+) -> Calibration:
+    """Calcula tudo que o scoring precisa a partir do histórico.
+
+    `closed` (Won/Lost) calibra F1 e a curva do F2. `open_deals` (Engaging, sem
+    close_*) entra na curva do F2 só como **censura**: um deal aberto há 200 dias
+    esteve vivo em todas as idades até 200 e nunca fechou — sem ele, "vivos" na
+    última faixa vira igual a "decididos" e o degrau satura em 100 por construção
+    (revisão externa, B1). `reference_date` é o "hoje" do snapshot; default = última
+    data dos dados. Nada usa a data de hoje.
+    """
     cfg = config or ScoringConfig()
     closed = closed[closed["deal_stage"].isin(["Won", "Lost"])].copy()
     if closed.empty:
         raise ValueError("Sem deals fechados para calibrar")
     closed["won"] = (closed["deal_stage"] == "Won").astype(int)
     closed["days"] = (closed["close_date"] - closed["engage_date"]).dt.days
+
+    if open_deals is not None:
+        open_eng = open_deals[(open_deals["deal_stage"] == "Engaging") & open_deals["engage_date"].notna()]
+    else:
+        open_eng = None
+    if reference_date is None:
+        reference_date = closed["close_date"].max()
+        if open_eng is not None and len(open_eng):
+            reference_date = max(reference_date, open_eng["engage_date"].max())
+    reference_date = pd.Timestamp(reference_date)
 
     g = float(closed["won"].mean())
 
@@ -116,36 +142,54 @@ def calibrate(closed: pd.DataFrame, products: pd.DataFrame, config: ScoringConfi
     vend_prior = cell.index.get_level_values("sales_agent").map(vendor["suav"])
     cell["suav"] = _shrink(cell["won"], cell["n"], vend_prior.to_numpy(), cfg.k2)
 
-    # F2: quanto do que ainda estava vivo foi decidido, por dia, em cada faixa
-    wall = int(closed["days"].max())
-    days = closed["days"].to_numpy()
+    # F2: hazard por idade = desfechos ÷ dias de exposição, em cada faixa.
+    # Conjunto de risco = fechados (evento) + abertos em Engaging (censurados na referência).
+    # Só coortes engajadas a partir do primeiro fechamento: antes disso um deal não podia
+    # fechar cedo por construção do dataset (truncagem à esquerda; 03-H5).
+    wall = int(closed["days"].max())  # parede: propriedade dos fechados, todas as coortes
+    cohort_start = closed["close_date"].min()
+    coorte = closed[closed["engage_date"] >= cohort_start]
+    events = coorte["days"].to_numpy()
+    if open_eng is not None and len(open_eng):
+        open_coorte = open_eng[open_eng["engage_date"] >= cohort_start]
+        censored = (reference_date - open_coorte["engage_date"]).dt.days.to_numpy()
+        n_open_beyond_wall = int(((reference_date - open_eng["engage_date"]).dt.days > wall).sum())
+    else:
+        censored = np.array([], dtype=int)
+        n_open_beyond_wall = 0
+    if (censored < 0).any():
+        raise ValueError("Deal aberto com engage_date depois da data de referência")
+
+    def exposure(ends: np.ndarray, lo: int, hi: int) -> float:
+        """Dias vividos dentro de [lo, hi] por deals cujo fim (fechamento ou censura) é `ends`."""
+        alive = ends[ends >= lo]
+        return float(np.minimum(alive, hi).sum() - lo * len(alive) + len(alive))
+
     rows = []
     for lo, hi in cfg.fine_bands:
         hi_eff = wall if hi is None else hi
         if lo > wall:
             continue
-        decided = int(((days >= lo) & (days <= hi_eff)).sum())
-        alive = int((days >= lo).sum())
-        length = hi_eff - lo + 1
-        rows.append({"faixa": f"{lo}–{hi_eff}", "lo": lo, "hi": hi_eff, "desfechos": decided,
-                     "vivos": alive, "por_dia": decided / alive / length if alive else 0.0})
+        decided = int(((events >= lo) & (events <= hi_eff)).sum())
+        expo = exposure(events, lo, hi_eff) + exposure(censored, lo, hi_eff)
+        alive = int((events >= lo).sum() + (censored >= lo).sum())
+        rows.append({"faixa": f"{lo}–{hi_eff}", "lo": lo, "hi": hi_eff, "desfechos": decided, "vivos": alive,
+                     "exposicao_dias": expo, "por_dia": decided / expo if expo else 0.0})
     curve = pd.DataFrame(rows)
 
     e1, e2, e3 = cfg.zone_edges
     zone_defs = [("0–14", 0, e1), ("15–60", e1 + 1, e2), ("61–90", e2 + 1, e3), ("91–parede", e3 + 1, wall)]
-    # Referência = taxa por dia da zona inteira 0–14 (2,79% nos dados originais)
-    ref_decided = int(((days >= 0) & (days <= e1)).sum())
-    ref = ref_decided / len(days) / (e1 + 1)
     zrows = []
     for name, lo, hi in zone_defs:
         inside = curve[(curve["lo"] >= lo) & (curve["hi"] <= hi)]
-        # A zona recebe a atenção do seu trecho mais decisivo, relativa às duas primeiras semanas
-        peak = float(inside["por_dia"].max()) if len(inside) else 0.0
-        f2 = int(min(100, round(peak / ref * 100))) if ref > 0 else 0
-        zrows.append({"zona": name, "lo": lo, "hi": hi, "por_dia_pico": peak, "f2": f2,
-                      "desfechos": int(inside["desfechos"].sum()),
-                      "pct_desfechos": float(inside["desfechos"].sum() / len(days))})
+        # Degrau = hazard médio da zona (desfechos ÷ exposição), nunca o pico de uma faixa
+        expo = float(inside["exposicao_dias"].sum())
+        zrows.append({"zona": name, "lo": lo, "hi": hi, "desfechos": int(inside["desfechos"].sum()),
+                      "exposicao_dias": expo, "por_dia": inside["desfechos"].sum() / expo if expo else 0.0,
+                      "pct_desfechos": float(inside["desfechos"].sum() / max(len(events), 1))})
     zones = pd.DataFrame(zrows)
+    ref = float(zones.loc[zones["zona"] == "0–14", "por_dia"].iloc[0])  # mesma escala dos dois lados
+    zones["f2"] = (zones["por_dia"] / ref * 100).round().clip(upper=100).astype(int) if ref > 0 else 0
     zones["f2_curva"] = zones["f2"]  # o que a curva deu, antes do piso
     zones.loc[zones["zona"] == "15–60", "f2"] = max(int(zones.loc[zones["zona"] == "15–60", "f2"].iloc[0]),
                                                    cfg.vale_minimo)
@@ -160,10 +204,21 @@ def calibrate(closed: pd.DataFrame, products: pd.DataFrame, config: ScoringConfi
     prod["f3"] = ((np.log(prod["sales_price"]) - lo_p) / (hi_p - lo_p) * 100).round().astype(int)
     prod["rank"] = prod["sales_price"].rank(ascending=False, method="min").astype(int)
 
+    # Números que as frases usam — da coorte, não decorados
+    lost = coorte[coorte["won"] == 0]
+    notes = {
+        "pct_perdas_ate_14": float((lost["days"] <= e1).mean()) if len(lost) else float("nan"),
+        "pct_fechados_ate_90": float((coorte["days"] <= e3).mean()) if len(coorte) else float("nan"),
+        "n_abertos_alem_da_parede": n_open_beyond_wall,
+        "n_coorte": int(len(coorte)),
+        "n_censurados": int(len(censored)),
+    }
+
     return Calibration(
         config=cfg, global_rate=g, last_close_date=closed["close_date"].max(), wall_days=wall,
         vendor=vendor, cell=cell, curve=curve, zones=zones, products=prod,
-        n_closed=int(len(closed)), n_won=int(closed["won"].sum()),
+        reference_date=reference_date, cohort_start=cohort_start,
+        n_closed=int(len(closed)), n_won=int(closed["won"].sum()), notes=notes,
     )
 
 
@@ -217,18 +272,22 @@ def factor_age(age_days: int | None, calib: Calibration) -> tuple[float | None, 
     if age_days is None:
         return None, "Sem data de engajamento: não há sinal de tempo. Score usa só encaixe e valor.", "prospecting"
 
-    wall = calib.wall_days
+    wall, notas = calib.wall_days, calib.notes
+    alem = notas.get("n_abertos_alem_da_parede", 0)
+    if age_days < 0:
+        raise ValueError(f"Idade negativa ({age_days} dias): engage_date depois da data de referência")
     if age_days > wall:
-        return None, (f"Há {age_days} dias em Engaging — nenhum deal fechou depois de {wall} dias. "
-                      f"Não é esforço, é decisão: requalificar ou descartar."), "sem precedente"
+        return None, (f"Há {age_days} dias em Engaging. Nenhum deal do histórico fechou depois de {wall} dias"
+                      + (f"; {alem} abertos já passaram disso sem fechar" if alem else "")
+                      + ". Não é esforço, é decisão: requalificar ou descartar."), "sem precedente"
 
     z = calib.zone_for(age_days)
     zones = calib.zones.set_index("zona")
     pct = lambda name: f"{round(zones.loc[name, 'pct_desfechos'] * 100):d}%"  # noqa: E731
     name = z["zona"]
     if name == "0–14":
-        frase = (f"Há {age_days} dias em Engaging. Metade das perdas acontece até o dia 14 — "
-                 f"é agora que o seu esforço evita a perda.")
+        frase = (f"Há {age_days} dias em Engaging. {_pct(notas['pct_perdas_ate_14'])} das perdas acontecem "
+                 f"até o dia 14 — é agora que o seu esforço evita a perda.")
     elif name == "15–60":
         frase = (f"Há {age_days} dias em Engaging. Zona de follow-up: só {pct(name)} dos desfechos acontecem "
                  f"entre os dias 15 e 60. Mantenha a cadência.")
@@ -236,8 +295,10 @@ def factor_age(age_days: int | None, calib: Calibration) -> tuple[float | None, 
         frase = (f"Há {age_days} dias em Engaging. Segunda onda de decisões: {pct(name)} dos desfechos "
                  f"acontecem entre 61 e 90 dias.")
     else:
-        frase = (f"Há {age_days} dias em Engaging. Última janela: 80% dos que fecham já fecharam aos 90 dias "
-                 f"e nenhum passou de {wall}. Empurre para a decisão.")
+        frase = (f"Há {age_days} dias em Engaging. Perto da parede: {_pct(notas['pct_fechados_ate_90'])} dos que "
+                 f"fecham já fecharam aos 90 dias, nenhum do histórico fechou depois de {wall}"
+                 + (f", e {alem} abertos já passaram disso sem fechar" if alem else "")
+                 + ". Decida antes que vire mais um.")
     return float(z["f2"]), frase, name
 
 
@@ -279,7 +340,7 @@ def score_open_deals(
 
     cfg = calib.config
     if reference_date is None:
-        reference_date = max(calib.last_close_date, open_deals["engage_date"].max())
+        reference_date = calib.reference_date or max(calib.last_close_date, open_deals["engage_date"].max())
     reference_date = pd.Timestamp(reference_date)
 
     team = teams.set_index("sales_agent")

@@ -47,42 +47,49 @@ F1                = clip( 50 + (celula_suav − media_geral) * 100 / 30 , 0, 100
   - base pequena: *"Seu histórico em GTX Plus Pro é 9 de 10 (90%). Base pequena: o score usa 72% (puxado para a sua média de 70%)."*
   - sem histórico: *"Você ainda não fechou nenhum GTK 500. O score usa a sua média geral (66%)."*
 
-### Fator 2 — Necessidade de atenção pela idade em Engaging (curva em U)
+### Fator 2 — Necessidade de atenção pela idade em Engaging
 
-**Não mede chance de ganhar.** Mede onde o esforço do vendedor muda o resultado. Calibrado pela curva dos 6.711 fechados: em cada faixa de idade, quanto do que ainda estava vivo foi decidido, por dia.
+> **Reescrito após a [revisão externa](06-revisao-externa.md), B1.** A versão aprovada era um U com 100 nas duas pontas. O braço direito (91–138 = 100) era artefato de três causas empilhadas: (a) a última faixa terminava na parede, então "vivos" era igual a "decididos" por definição; (b) os 1.589 deals abertos em Engaging — vivos em cada idade e nunca fechados — não entravam no denominador; (c) as coortes engajadas antes do primeiro fechamento do dataset (2017-03-01) só podiam ter duração longa. A versão abaixo corrige as três. A tabela original fica no histórico do git.
 
-| Faixa (dias em Engaging) | Desfechos na faixa | % de todos os desfechos | % dos Lost | Vivos no início | Decididos ÷ vivos | Por dia |
-|---|---|---|---|---|---|---|
-| 0–7 | 1.413 | 21,1% | 26,6% | 6.711 | 21,1% | 2,63% |
-| 8–14 | 1.393 | 20,8% | 23,9% | 5.298 | 26,3% | 3,76% |
-| 15–30 | 357 | 5,3% | 3,9% | 3.905 | 9,1% | 0,57% |
-| 31–60 | 569 | 8,5% | 7,8% | 3.548 | 16,0% | 0,53% |
-| 61–90 | 1.621 | 24,2% | 22,0% | 2.979 | 54,4% | 1,81% |
-| 91–120 | 1.165 | 17,4% | 14,0% | 1.358 | 85,8% | 2,86% |
-| 121–138 | 193 | 2,9% | 1,9% | 193 | 100,0% | 5,56% |
+**Não mede chance de ganhar.** Mede onde a decisão está acontecendo: o **hazard** por idade — de cada dia vivido em Engaging naquela faixa, quantos terminam em desfecho (ganho ou perda).
 
-A coluna "por dia" é o U: 2,6–3,8% nos primeiros 14 dias, cai para 0,5% entre 15 e 60, volta a 1,8% entre 61 e 90 e passa de 2,9% a partir do dia 91.
+```
+conjunto de risco  = fechados (evento na duração) + abertos em Engaging (censurados na referência)
+coorte             = engajados a partir do primeiro close_date do histórico (2017-03-01)
+por_dia(faixa)     = desfechos na faixa ÷ dias de exposição na faixa
+F2(zona)           = min(100, por_dia(zona) ÷ por_dia(0–14) × 100)      # média da zona, nunca o pico de uma faixa
+```
 
-**Degraus do F2** — `por dia ÷ 2,79%` (a taxa da zona inteira 0–14), limitado a 100. Cada zona recebe a atenção do seu **trecho mais decisivo** (a faixa fina de maior "por dia" dentro dela) — é o que faz 91–138 chegar a 100 pelo trecho 121–138, e é a regra que o código implementa:
+Calibrado em 5.739 fechados da coorte + 1.376 abertos censurados em 2017-12-31:
 
-| Zona | F2 | O que a curva diz |
-|---|---|---|
-| **0–14 dias** | **100** | 41,8% de todos os desfechos e **50,5% das perdas** acontecem aqui. É onde se perde — e onde o esforço evita a perda. |
-| **15–60 dias** | **35** (curva: 20) | Vale do U: 13,8% dos desfechos em 46 dias, 0,52% por dia — 5× mais calmo que as pontas. Follow-up normal. **Piso de produto em 35** (ver abaixo). |
-| **61–90 dias** | **65** | Segunda onda: 24,2% dos desfechos (22% das perdas) em 30 dias. |
-| **91–138 dias** | **100** | Última janela antes da parede: **80% dos que fecham já fecharam aos 90**, 100% dos vivos são decididos aqui, nenhum deal passou de 138. |
+| Faixa (dias) | Desfechos | Vivos no início | Exposição (dias) | Por dia |
+|---|---|---|---|---|
+| 0–7 | 1.410 | 7.115 | 52.629 | 2,68% |
+| 8–14 | 1.364 | 5.705 | 34.598 | 3,94% |
+| 15–30 | 326 | 4.334 | 65.475 | 0,50% |
+| 31–60 | 503 | 3.997 | 113.893 | 0,44% |
+| 61–90 | 1.290 | 3.455 | 84.431 | 1,53% |
+| 91–120 | 757 | 2.112 | 48.492 | 1,56% |
+| 121–138 | 89 | 1.252 | 20.837 | 0,43% |
 
-- O vale (15–60) sai da fórmula em 19, arredondado para 20. É mais baixo que "médio = 50" porque os dados dizem que a faixa é calma mesmo.
-  - **Ressalva registrada na aprovação:** 20 parece baixo — um deal de 45 dias com encaixe bom e valor alto fica atrás de quase todo deal novo. Ficou em 20 até o backtest.
-  - **Decidido no [05](05-backtest.md): piso de 35.** O backtest não distingue 20 de 35 de 50 (o top 20% é definido pelas pontas do U), então foi decisão de produto: a zona 15–60 é a que mais ganha em todos os cortes (63–70%) e não pode ficar no fundo da fila. O motor aplica `vale_minimo = 35` sobre o que a curva der e guarda o valor da curva em `f2_curva`; se os dados um dia derem mais que 35, os dados mandam.
-- 61–90 fica como degrau próprio (65) e não dentro do "médio" porque a curva mostra uma segunda onda ali — um quarto de todos os desfechos.
-- As duas pontas ficam em 100: a categoria e os marcadores dizem qual é qual (*janela crítica* ≤ 14 / *última janela* 91–138). Dentro da mesma pontuação de F2, F1 e F3 desempatam.
-- A curva é calculada dos dados na hora de rodar, não é hard-coded — se o CSV mudar, os degraus mudam. Os cortes de faixa (14 / 60 / 90 / 138) são fixos.
-- Frases:
-  - 0–14: *"Há 9 dias em Engaging. Metade das perdas acontece até o dia 14 — é agora que o seu esforço evita a perda."*
+**Degraus do F2** (média da zona ÷ média de 0–14):
+
+| Zona | Por dia | Curva | F2 | O que a curva diz |
+|---|---|---|---|---|
+| **0–14 dias** | 3,18% | 100 | **100** | 56% das perdas da coorte acontecem aqui. É onde se perde — e onde o esforço evita a perda. |
+| **15–60 dias** | 0,46% | 15 | **35** (piso) | Vale: 7× mais calmo que as duas primeiras semanas. Follow-up normal. Piso de produto em 35 (decisão no [05](05-backtest.md)): é a zona que mais ganha e não pode ficar no fundo. |
+| **61–90 dias** | 1,53% | 48 | **48** | Segunda onda: metade da intensidade da primeira. |
+| **91–138 dias** | 1,22% | 38 | **38** | Perto da parede. Sem censura este degrau dava 100; com os 1.291 abertos que já passaram de 138 no conjunto de risco, cai para 38. Não é "última janela quente" — é a antessala de Decidir. |
+
+- A curva é calculada dos dados na hora de rodar: com o CSV, os degraus mudam (teste sintético com hazard constante dá curva plana; sem os abertos no conjunto de risco, a última zona satura em 100 — os dois estão em `tests/test_invariants.py`). Os cortes de faixa (14 / 60 / 90) são fixos; a parede (138) é o máximo dos fechados, todas as coortes.
+- `f2_curva` guarda o valor da curva; `f2` é o que o score usa (só o piso do vale difere).
+- Marcadores dentro de Agir: **janela crítica** (≤ 14 dias) e **última janela** (91–138) continuam como rótulos de zona.
+- Frases (números calculados da coorte, não decorados — revisão D2):
+  - 0–14: *"Há 9 dias em Engaging. 56% das perdas acontecem até o dia 14 — é agora que o seu esforço evita a perda."*
   - 15–60: *"Há 45 dias em Engaging. Zona de follow-up: só 14% dos desfechos acontecem entre os dias 15 e 60. Mantenha a cadência."*
-  - 61–90: *"Há 75 dias em Engaging. Segunda onda de decisões: um em cada quatro deals se define entre 61 e 90 dias."*
-  - 91–138: *"Há 110 dias em Engaging. Última janela: 80% dos que fecham já fecharam aos 90 dias e nenhum passou de 138. Empurre para a decisão."*
+  - 61–90: *"Há 75 dias em Engaging. Segunda onda de decisões: 22% dos desfechos acontecem entre 61 e 90 dias."*
+  - 91–138: *"Há 95 dias em Engaging. Perto da parede: 85% dos que fecham já fecharam aos 90 dias, nenhum do histórico fechou depois de 138, e 1.291 abertos já passaram disso sem fechar. Decida antes que vire mais um."*
+  - Decidir: *"Há 377 dias em Engaging. Nenhum deal do histórico fechou depois de 138 dias; 1.291 abertos já passaram disso sem fechar. Não é esforço, é decisão: requalificar ou descartar."*
   - Prospecting: *"Sem data de engajamento: não há sinal de tempo. Score usa só encaixe e valor."*
 
 ### Fator 3 — Valor em jogo
@@ -113,7 +120,7 @@ Eram 40 / 35 / 25 na aprovação. Revisados no [05](05-backtest.md): o AUC 0,515
 
 | Fator | Peso | Justificativa a partir dos spreads |
 |---|---|---|
-| F2 — Atenção pela idade | **55** (era 40) | Maior spread do teste (22,1 pp por faixa; 17,4 pp pós-cut), grupos grandes (menor n = 89), e a curva acumulada mostra onde as decisões acontecem (mediana Lost 14 dias vs Won 57). É o sinal que o vendedor **não vê** no CRM: ele vê o stage, não a curva. No backtest, é o que faz o top 20% da fila se decidir em 14 dias o dobro das vezes que ordenar por valor. |
+| F2 — Atenção pela idade | **55** (era 40) | Maior spread do teste (22,1 pp por faixa; 17,4 pp pós-cut), grupos grandes (menor n = 89), e a curva acumulada mostra onde as decisões acontecem (mediana Lost 14 dias vs Won 57). É o sinal que o vendedor **não vê** no CRM: ele vê o stage, não a curva. O backtest ([05](05-backtest.md)) mede se a curva generaliza fora do período. |
 | F1 — Encaixe | **20** (era 35) | Vendedor sozinho dá 15,4 pp; com produto sobe para 28,8 pp (n ≥ 50), mas parte disso é n pequeno e a suavização come parte do spread (F1 real fica entre 8 e 85). Fora do período, quase não ordena (AUC 0,515; backtest indiferente a 35 / 20 / 0). É um sinal que o vendedor em parte já conhece — o app confirma mais do que revela. Fica como contexto. |
 | F3 — Valor | **25** | Não prediz fechamento (4,8 pp entre produtos), então não pode pesar como os outros dois. Entra porque fila de atenção é sobre dinheiro: a sinal igual, o deal maior vem antes. Com 25, a diferença máxima por valor é 25 pontos — GTX Pro (72) ganha 18 pontos sobre MG Special (0) em igualdade, mas um GTK 500 no vale com encaixe ruim (≈ 19 + 2 + 25 ≈ 46) não passa um deal em janela crítica com encaixe mediano (≈ 55 + 10 + 9 ≈ 74). |
 
@@ -182,6 +189,6 @@ Filtros do app: vendedor, manager, região (o bônus do README). Sem API key, se
 
 1. Pesos ~~40 / 35 / 25~~ → **55 / 20 / 25** (revisto no 05).
 2. K1 = 50, **K2 = 50**.
-3. F1 em ±15 pp; **F2 em degraus de atenção (U), com piso de 35 no vale** (revisto no 05); F3 em log.
+3. F1 em ±15 pp; **F2 em degraus de hazard por idade com censura, com piso de 35 no vale** (revisto no 05 e na revisão externa B1); F3 em log.
 4. Ordem das categorias Agir → Engajar → Decidir; **Decidir ordenado por valor**.
 5. Marcadores "janela crítica" e "última janela" como rótulos dentro de Agir.

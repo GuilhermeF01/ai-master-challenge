@@ -35,7 +35,7 @@ def test_vendedor_ve_cartoes_com_frases(at):
     corpo = " ".join(m.value for m in at.markdown)
     assert "Bom dia, Maureen" in corpo
     assert "Você fecha GTX Plus Pro em 26 de 32 deals (81%)" in corpo
-    assert "Última janela" in corpo
+    assert "dias em Engaging" in corpo
     assert "em jogo" in corpo
 
 
