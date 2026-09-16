@@ -126,4 +126,11 @@ Os fechamentos vêm em blocos: entre 02/07 e 15/07 fecharam 299 deals, 100% com 
 
 ## Decisão
 
-_(em aberto — aguardando leitura da tabela)_
+1. **A fila não é previsão, e não vai ser vendida como previsão.** Empata com "mais novo primeiro" (24,7% vs 24,4%, vence em 19 de 37 cortes) e faz ~1,6× o acaso. A verdade é essa: o sinal de tempo que a fila tem é o que a data de engajamento já dá. O README diz isso com esses números — e não usa "o dobro" em lugar nenhum.
+2. **O que a ferramenta entrega é o que "mais novo primeiro" não faz:**
+   - tira os **1.291 deals além da parede** da frente do vendedor e os põe numa lista de decisão, ordenada por valor, para o manager;
+   - **explica cada deal** com três frases calculadas dos dados (idade, encaixe, valor);
+   - **desempata por valor e encaixe** dentro da mesma zona de idade;
+   - dá ao manager a **visão do time** com o buraco de conta (1.425 de 2.089 abertos sem conta) na cara.
+3. **Pesos e degraus ficam como estão** (55 / 20 / 25; curva com censura 100 / 15 → piso 35 / 48 / 38): o backtest não distingue pesos entre 40 e 100 no F2, e F1/F3 seguem sem validação (o 20 do F1 fica só pelo AUC 0,515). São decisões de produto, marcadas como tal no [04](04-logica-do-score.md).
+4. **Fica registrado como não validado:** que o esforço na janela crítica muda o desfecho (precisa de contrafactual); que F1 e F3 melhoram alguma coisa (precisa de métrica de valor); e que o padrão de fechamento em blocos existe fora deste dataset.
