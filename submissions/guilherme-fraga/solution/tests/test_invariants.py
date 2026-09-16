@@ -50,7 +50,7 @@ def test_f2_degraus_sao_propriedades_nao_numeros_decorados(calib):
 def test_censura_derruba_a_ultima_faixa(crm):
     """Sem os abertos no conjunto de risco, 'vivos' na última faixa == 'decididos' e o degrau vai a 100."""
     closed, open_deals = split_pipeline(crm.pipeline)
-    sem = calibrate(closed, crm.products).zones.set_index("zona")["f2_curva"]
+    sem = calibrate(closed, crm.products, open_deals=open_deals.iloc[0:0]).zones.set_index("zona")["f2_curva"]
     com = calibrate(closed, crm.products, open_deals=open_deals).zones.set_index("zona")["f2_curva"]
     assert sem["91–parede"] == 100 and com["91–parede"] < 60
     assert sem["0–14"] == com["0–14"] == 100
@@ -86,6 +86,13 @@ def test_hazard_constante_da_curva_plana(crm):
     assert z["0–14"] == 100
     assert (z.drop("0–14") >= 85).all(), z.to_dict()  # plana dentro do ruído
     assert (c.curve["por_dia"].between(0.016, 0.024)).all(), c.curve[["faixa", "por_dia"]].to_dict("records")
+
+
+def test_calibrate_exige_open_deals(crm):
+    """Sem os abertos a curva volta à tautologia; por isso o argumento não tem default (revisão, 2ª passada)."""
+    closed, _ = split_pipeline(crm.pipeline)
+    with pytest.raises(TypeError):
+        calibrate(closed, crm.products)
 
 
 def test_f2_override_so_quando_pedido(crm):
@@ -195,7 +202,7 @@ def test_base_do_historico(scored):
 def test_marcadores(scored):
     a = scored[scored["categoria"] == "Agir"]
     assert (a.loc[a["idade_dias"] <= 14, "marcadores"] == "janela crítica").all()
-    assert (a.loc[a["idade_dias"] >= 91, "marcadores"] == "última janela").all()
+    assert (a.loc[a["idade_dias"] >= 91, "marcadores"] == "perto da parede").all()
     assert a.loc[(a["idade_dias"] > 14) & (a["idade_dias"] < 91), "marcadores"].isna().all()
     assert scored.loc[scored["categoria"] != "Agir", "marcadores"].isna().all()
 

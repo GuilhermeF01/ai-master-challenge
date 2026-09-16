@@ -79,11 +79,11 @@ Calibrado em 5.739 fechados da coorte + 1.376 abertos censurados em 2017-12-31:
 | **0–14 dias** | 3,18% | 100 | **100** | 56% das perdas da coorte acontecem aqui. É onde se perde — e onde o esforço evita a perda. |
 | **15–60 dias** | 0,46% | 15 | **35** (piso) | Vale: 7× mais calmo que as duas primeiras semanas. Follow-up normal. Piso de produto em 35 (decisão no [05](05-backtest.md)): é a zona que mais ganha e não pode ficar no fundo. |
 | **61–90 dias** | 1,53% | 48 | **48** | Segunda onda: metade da intensidade da primeira. |
-| **91–138 dias** | 1,22% | 38 | **38** | Perto da parede. Sem censura este degrau dava 100; com os 1.291 abertos que já passaram de 138 no conjunto de risco, cai para 38. Não é "última janela quente" — é a antessala de Decidir. |
+| **91–138 dias** | 1,22% | 38 | **38** | Perto da parede. Sem censura este degrau dava 100; com os 1.291 abertos que já passaram de 138 no conjunto de risco, cai para 38. Não é uma "última janela quente" — é a antessala de Decidir. |
 
 - A curva é calculada dos dados na hora de rodar: com o CSV, os degraus mudam (teste sintético com hazard constante dá curva plana; sem os abertos no conjunto de risco, a última zona satura em 100 — os dois estão em `tests/test_invariants.py`). Os cortes de faixa (14 / 60 / 90) são fixos; a parede (138) é o máximo dos fechados, todas as coortes.
 - `f2_curva` guarda o valor da curva; `f2` é o que o score usa (só o piso do vale difere).
-- Marcadores dentro de Agir: **janela crítica** (≤ 14 dias) e **última janela** (91–138) continuam como rótulos de zona.
+- Marcadores dentro de Agir: **janela crítica** (≤ 14 dias) e **perto da parede** (91–138). O segundo chamava-se "última janela" até a 2ª passada da revisão: com o degrau em 38, o nome prometia uma urgência que o número não tem.
 - Frases (números calculados da coorte, não decorados — revisão D2):
   - 0–14: *"Há 9 dias em Engaging. 56% das perdas acontecem até o dia 14 — é agora que o seu esforço evita a perda."*
   - 15–60: *"Há 45 dias em Engaging. Zona de follow-up: só 14% dos desfechos acontecem entre os dias 15 e 60. Mantenha a cadência."*
@@ -116,12 +116,12 @@ score = (55 * F2 + 20 * F1 + 25 * F3) / 100                     # Engaging
 score = (20 * F1 + 25 * F3) / 45                                # Prospecting (sem F2, renormalizado)
 ```
 
-Eram 40 / 35 / 25 na aprovação. Revisados no [05](05-backtest.md): o AUC 0,515 do encaixe fora do período e as duas rodadas do backtest dizem a mesma coisa — **encaixe é contexto, não motor**. A frase do F1 continua no cartão; o número pesa menos.
+Eram 40 / 35 / 25 na aprovação. Revisados no [05](05-backtest.md). A evidência para baixar o F1 é **só o AUC 0,515** do encaixe fora do período ([03-D](03-teste-hipoteses.md)): o backtest mede tempo e, por desenho, não consegue medir F1 nem F3 — a grade de pesos varia dentro do ruído. **Encaixe é contexto, não motor** é uma decisão de produto apoiada nesse AUC, não no backtest. A frase do F1 continua no cartão; o número pesa menos.
 
 | Fator | Peso | Justificativa a partir dos spreads |
 |---|---|---|
 | F2 — Atenção pela idade | **55** (era 40) | Maior spread do teste (22,1 pp por faixa; 17,4 pp pós-cut), grupos grandes (menor n = 89), e a curva acumulada mostra onde as decisões acontecem (mediana Lost 14 dias vs Won 57). É o sinal que o vendedor **não vê** no CRM: ele vê o stage, não a curva. O backtest ([05](05-backtest.md)) mede se a curva generaliza fora do período. |
-| F1 — Encaixe | **20** (era 35) | Vendedor sozinho dá 15,4 pp; com produto sobe para 28,8 pp (n ≥ 50), mas parte disso é n pequeno e a suavização come parte do spread (F1 real fica entre 8 e 85). Fora do período, quase não ordena (AUC 0,515; backtest indiferente a 35 / 20 / 0). É um sinal que o vendedor em parte já conhece — o app confirma mais do que revela. Fica como contexto. |
+| F1 — Encaixe | **20** (era 35) | Vendedor sozinho dá 15,4 pp; com produto sobe para 28,8 pp (n ≥ 50), mas parte disso é n pequeno e a suavização come parte do spread (F1 real fica entre 8 e 85). Fora do período, quase não ordena (AUC 0,515). O backtest não consegue medir este fator (métrica de tempo), então o 20 não é validado — é o único ponto de apoio. É um sinal que o vendedor em parte já conhece — o app confirma mais do que revela. Fica como contexto. |
 | F3 — Valor | **25** | Não prediz fechamento (4,8 pp entre produtos), então não pode pesar como os outros dois. Entra porque fila de atenção é sobre dinheiro: a sinal igual, o deal maior vem antes. Com 25, a diferença máxima por valor é 25 pontos — GTX Pro (72) ganha 18 pontos sobre MG Special (0) em igualdade, mas um GTK 500 no vale com encaixe ruim (≈ 19 + 2 + 25 ≈ 46) não passa um deal em janela crítica com encaixe mediano (≈ 55 + 10 + 9 ≈ 74). |
 
 ## Categorias de ação
@@ -143,7 +143,7 @@ Três fatores ponderados é como o score é calculado; não é como a fila se co
 
 - **Agir:** a **janela crítica vem sempre primeiro** — F2 = 100 × 0,55 dá 28 pontos de vantagem sobre a zona seguinte, mais que o alcance somado de F1 (8–85 × 0,20 = 15 pontos) e F3 (25 pontos). Fora dela, os degraus 48 / 38 / 35 estão a menos de 7 pontos uns dos outros e **a ordem segue o preço do produto em 91% dos pares**, o encaixe em 67%, a zona em 64%. Ou seja: janela crítica → preço → encaixe → zona. (Antes da correção B1, com o braço direito em 100, a ordem era zona → preço → encaixe: só 2,3% dos pares entre zonas eram invertidos por F1 + F3; agora são 33%.)
 - **Engajar:** sem data não há sinal de tempo. F3 pesa 25 / 45 = 56% e **a lista segue o preço em 92% dos pares**; o F1 ordena 53% (moeda). É uma lista de valor com o encaixe desempatando, e o app diz isso na legenda. O README do challenge pede "não é só ordenar por valor" — para Prospecting, com estes dados, é quase isso, e fica declarado.
-- Marcadores dentro de Agir (rótulo, não categoria): **janela crítica** (≤ 14 dias) e **última janela** (91–138 dias). O F2 já carrega a urgência no número; o marcador só nomeia qual das duas pontas do U o deal está.
+- Marcadores dentro de Agir (rótulo, não categoria): **janela crítica** (≤ 14 dias, F2 = 100) e **perto da parede** (91–138 dias, F2 = 38). O F2 carrega a atenção no número; o marcador só nomeia a zona — um diz "é agora que se perde", o outro "está a caminho de Decidir".
 - Regra fixa de dados: **não existe deal fechado sem passar por Engaging** (H1). Prospecting nunca vai direto para Decidir.
 
 ### Como o pipeline aberto se distribui nessas regras (2017-12-31)
@@ -189,7 +189,7 @@ Além desses: teste de que a soma dos pesos dá 100 (e 45 renormalizado para Pro
 ```
 opportunity_id, vendedor, manager, região, produto, conta (ou "—"),
 categoria, score (0–100 ou "—" em Decidir), base do histórico,
-F1, F2, F3, frase_F1, frase_F2, frase_F3, marcadores (ex.: "janela crítica", "última janela")
+F1, F2, F3, frase_F1, frase_F2, frase_F3, marcadores (ex.: "janela crítica", "perto da parede")
 ```
 
 Filtros do app: vendedor, manager, região (o bônus do README). Sem API key, sem rede.
@@ -200,4 +200,4 @@ Filtros do app: vendedor, manager, região (o bônus do README). Sem API key, se
 2. K1 = 50, **K2 = 50**.
 3. F1 em ±15 pp; **F2 em degraus de hazard por idade com censura, com piso de 35 no vale** (revisto no 05 e na revisão externa B1); F3 em log.
 4. Ordem das categorias Agir → Engajar → Decidir; **Decidir ordenado por valor**.
-5. Marcadores "janela crítica" e "última janela" como rótulos dentro de Agir.
+5. Marcadores "janela crítica" e "perto da parede" (era "última janela") como rótulos dentro de Agir.

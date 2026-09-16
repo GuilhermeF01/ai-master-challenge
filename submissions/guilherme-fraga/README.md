@@ -24,7 +24,7 @@ pip install -r requirements.txt        # pandas, streamlit, pytest
 streamlit run app.py                   # abre em http://localhost:8501
 ```
 
-Extras: `python src/score_pipeline.py` gera `output/pipeline_scored.csv` (os 2.089 abertos pontuados); `pytest -q` roda os 35 testes; `python analysis/backtest.py` reproduz o backtest (~2 min). Nada usa rede nem a data de hoje: a referência é 2017-12-31, a última data do CRM.
+Extras: `python src/score_pipeline.py` gera `output/pipeline_scored.csv` (os 2.089 abertos pontuados); `pytest -q` roda os 36 testes; `python analysis/backtest.py` reproduz o backtest (~2 min). Nada usa rede nem a data de hoje: a referência é 2017-12-31, a última data do CRM.
 
 ### Abordagem
 
@@ -135,7 +135,7 @@ Rodei o enunciado do challenge sem nenhum contexto num `claude -p` em sessão li
 | Claude Code (Opus 5) | Toda a construção: auditoria, teste de hipóteses, motor, app, backtest, documentação — sob aprovação manual de cada edição e um commit por etapa. |
 | Claude Fable 5.1 (`claude-fable-5-1`), sessão limpa | Revisor externo: tentou derrubar o score e o backtest sem contato com a sessão que construiu ([`06-revisao-externa.md`](process-log/06-revisao-externa.md), [print](process-log/screenshots/05-revisao-externa-fable-crivo.png)). Achou três bloqueadores, todos aceitos. |
 | `claude -p` (brief cru, sem CSVs) | Baseline do que a IA entrega sozinha ([`baseline/`](process-log/baseline/)). |
-| Python: pandas, Streamlit, pytest; scikit-learn só na análise | Motor, app, 35 testes, check de ML. |
+| Python: pandas, Streamlit, pytest; scikit-learn só na análise | Motor, app, 36 testes, check de ML. |
 
 ### Workflow
 
@@ -157,7 +157,7 @@ Sete correções registradas com causa raiz em [`erros-e-correcoes.md`](process-
 - **#2** — propôs K2 = 30 sabendo que uma célula de 14 deals zerava o fator, contra o critério que eu tinha dado.
 - **#5** — mediu o backtest por "quantos ganharam" numa fila que promete "onde a decisão está acontecendo": repetiu o erro #1 um nível acima.
 - **#6** — o braço direito do U era artefato: a curva contava como vivos só quem fechou. A tautologia passou porque confirmava a hipótese. Achado pelo revisor externo, não por mim nem pela IA que construiu.
-- **#7** — o backtest v1 avaliava só sobreviventes contra um baseline que não compete ("valor"); o "dobro" virou empate com "mais novo primeiro".
+- **#7** — o backtest v1 avaliava só sobreviventes contra um baseline que não compete ("valor"); o resultado da v1 virou empate com "mais novo primeiro".
 
 Mais dois de processo: `git add -f` em diretório arrastou `__pycache__` (#4), e Decidir sem ordem definida (#3).
 

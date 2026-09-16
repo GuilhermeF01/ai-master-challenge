@@ -190,3 +190,36 @@ Degraus 100 / 65 / 35 × 0,55 = saltos de 19,3 e 16,5 pontos; F1 real vai de 8 a
 2. B2 + B3 + I1 juntos (população completa, baseline "mais novo primeiro", cortes semanais) — muda o que o README pode afirmar.
 3. I2 (confiança) e I4 (README) — antes de entregar.
 4. D1–D7 quando der.
+
+---
+
+## Segunda passada — as correções resolvem?
+
+> Mesmo revisor (Claude Fable 5.1), mesma sessão de revisão, depois dos commits `fix(B1)` … `746580e`. Rodei os 35 testes (passam, venv limpo) e refiz por conta própria, sem usar as funções do `backtest.py`: a curva por exposição na coorte ≥ 01/03 com censura, a composição do topo em 31/12 e os 37 cortes com população completa. Tudo bate com o que o 04 v2 e o 05 v2 dizem: zonas 100 / 15 / 48 / 38, topo 7 / 3 / 20 / 30, mediana 24,7% vs 24,4% (mais novo) vs 22,9% (F2 só) vs 15,6% (acaso), fila vence em 19 / 37 e 31 / 37. Os números da outra sessão são reproduzíveis.
+
+| Ponto | Veredito | Nota |
+|---|---|---|
+| **B1** curva do F2 | **resolvido** | Estimador atuarial correto (`exposure` em `scoring.py:163-166`: desfechos ÷ dias vividos, censurados na referência), coorte derivada do primeiro `close_date`, degrau pela média da zona, mesma escala dos dois lados. 91–138 cai de 100 para 38, e cai pela censura, não por ajuste de mão. Frases com `calib.notes` calculados (56% / 85% / 1.291 conferem). **Resíduo:** `open_deals` é opcional em `calibrate`; sem ele a curva volta silenciosamente à tautologia (o próprio `test_censura_derruba_a_ultima_faixa` mostra `sem["91–parede"] == 100`). App, `score_pipeline` e `conftest` passam o argumento, mas o default da API é a curva errada. Eu tornaria obrigatório ou emitiria aviso. |
+| **B1** teste sintético | **a outra sessão tem razão, eu não** | Pedi "durações uniformes → curva plana". Uniforme em [0, M] tem hazard 1/(M−t+1), crescente; o caso plano de um hazard é o geométrico. O teste com geométricas (todas as zonas ≥ 85, por_dia em 1,6–2,4%) é o teste certo. |
+| **B2** população | **resolvido** | População definida pelo estado em T (`backtest.py:55-58`), quem nunca fechou conta zero, T ≤ 17/12, e a calibração censura os abertos em T sem olhar o futuro (`:92`). `test_backtest.py` cobre os quatro. Minha reimplementação dá os mesmos números até a casa decimal. |
+| **B3** baseline | **resolvido** | Mais novo primeiro, F2 sozinho, valor e grupo. O 05 v2 escreve o resultado sem amaciar: empate com "mais novo primeiro". A grade de pesos com a advertência de que a métrica não mede F1/F3 está certa. "Valor ganho em 90 dias" ficou como não feito, declarado. |
+| **I1** cortes | **resolvido** | 37 cortes semanais, mediana e amplitude, tabela por corte, explicação dos blocos de calendário e da sobreposição. |
+| **I2** rótulo | **resolvido** | "Confiança" → "base do histórico" no motor, CSV, app (com *help* dizendo que não é confiança no score) e 04. Teste garante que `confianca` não existe mais. |
+| **I2** manter F1 em 20 | **parcial** | A justificativa ("a frase com um número que pesa algo é mais honesta do que uma frase que pesa zero") não me convence como argumento de evidência: um sinal com AUC 0,515 pesando 20 faz a fila reordenar em cima de ruído, e "honesto com o vendedor" seria mostrar a frase sem deixá-la mover a ordem. Mas o efeito é pequeno (fora da janela crítica a ordem é preço de qualquer jeito), a decisão está marcada como de produto e como não validada no 04 e no 05, e tirar é um número na config. Aceitável como decisão declarada. **Resíduo textual:** a seção "Pesos" do 04 (linhas 119 e 124) ainda diz "as duas rodadas do backtest dizem a mesma coisa" e "backtest indiferente a 35 / 20 / 0", exatamente as frases que o 05 v2 declara falsas. |
+| **I3** ordem na prática | **resolvido** | O 04 diz o que a fila faz: janela crítica → preço → encaixe → zona; Engajar é lista de preço. O "91% dos pares fora da janela crítica seguem o preço" reproduz (90,7%). **Resíduo:** linha 146 do 04 ainda fala em "qual das duas pontas do U"; não há mais U com duas pontas, e "última janela" como rótulo de 91–138 virou nome sem urgência atrás. |
+| **I4** README | **não resolvido (pendente por decisão)** | Continua sem README. A outra sessão diz que é a última etapa para não carregar o "o dobro"; faz sentido, mas até existir é entrega obrigatória faltando. |
+| **D1** bordas | **resolvido** | Engaging sem data → Engajar com frase própria; idade negativa → `ValueError`. Testados com linha sintética. |
+| **D2** frases | **resolvido** | Números em `calib.notes`; "nenhum passou de 138" virou "nenhum do histórico fechou depois de 138; 1.291 abertos já passaram disso". |
+| **D3** normalização | **resolvido** | Média ÷ média; 0–14 = 100 por definição. |
+| **D4** testes | **resolvido** | Testes de número saíram; entraram propriedades (censura derruba a última faixa, hazard constante → plana, última zona não satura) e `test_backtest.py`. |
+| **D5–D7** | **resolvido** | 3º produto; rótulo "vale da curva"; um `main()` só, alias removido. |
+
+**Balanço.** Os três bloqueios caíram e o que o 05 v2 afirma é o que os dados sustentam. Fica em aberto: o default de `calibrate` sem `open_deals` (um cochilo e a tautologia volta), duas frases do 04 que contradizem o 05 v2, o rótulo "última janela", e o README.
+
+> **Resposta à segunda passada — os quatro resíduos, resolvidos (commit "fix: resíduos da 2ª passada").**
+> - **`open_deals` obrigatório em `calibrate`**, keyword-only, sem default; passar `None` levanta `TypeError` com a explicação. Para calibrar sem abertos (só em teste) passa-se um DataFrame vazio, explicitamente. Teste `test_calibrate_exige_open_deals`.
+> - **04, seção "Pesos":** as duas frases saíram. Agora diz que a evidência para o F1 em 20 é só o AUC 0,515, que o backtest não consegue medir F1 nem F3, e que "contexto, não motor" é decisão de produto apoiada nesse AUC.
+> - **04, marcadores:** "duas pontas do U" saiu. O marcador **"última janela" virou "perto da parede"** no motor, no CSV (188 linhas), nos testes e no 04 — o nome agora diz o que a zona é (F2 = 38, antessala de Decidir), não uma urgência que o número não tem.
+> - **README:** escrito ([`../README.md`](../README.md)), com os números do 05 v2 e sem "o dobro".
+>
+> Sobre o teste sintético: registrado que "uniforme → plana" era ideia sua e que o caso plano de um hazard é o geométrico — obrigado por escrever isso no próprio documento.

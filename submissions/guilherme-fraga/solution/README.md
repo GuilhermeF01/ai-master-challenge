@@ -15,7 +15,7 @@ Sem API key, sem rede. Testado com Python 3.13, pandas 3.0, Streamlit 1.64.
 |---|---|
 | `streamlit run app.py` | App: aba do vendedor ("Minha segunda-feira") e aba do manager. `?vendedor=Nome` na URL pré-seleciona. |
 | `python src/score_pipeline.py` | Gera `output/pipeline_scored.csv` com os 2.089 deals abertos pontuados. |
-| `pytest -q` | 35 testes: leakage (`close_value`/`close_date` nunca entram), invariantes, curva sintética, backtest, app. |
+| `pytest -q` | 36 testes: leakage (`close_value`/`close_date` nunca entram), invariantes, curva sintética, backtest, app. |
 | `python analysis/backtest.py` | Backtest com 37 cortes semanais (~2 min). |
 | `python analysis/test_hipoteses.py` | Reproduz o teste das hipóteses (só stdlib). |
 | `python analysis/ml_check.py` | Check de ML (precisa de `scikit-learn`, que não é dependência do app). |

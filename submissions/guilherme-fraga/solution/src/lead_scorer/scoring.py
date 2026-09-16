@@ -45,7 +45,7 @@ class ScoringConfig:
         (0, 7), (8, 14), (15, 30), (31, 60), (61, 90), (91, 120), (121, None),
     )
     janela_critica_max: int = 14
-    ultima_janela_min: int = 91
+    perto_da_parede_min: int = 91
     # Piso do vale (zona 15–60). A curva dá 20; decisão de produto (05-backtest): a zona
     # que mais ganha em todos os cortes não pode ficar no fundo da fila.
     vale_minimo: int = 35
@@ -101,18 +101,23 @@ def calibrate(
     closed: pd.DataFrame,
     products: pd.DataFrame,
     config: ScoringConfig | None = None,
-    open_deals: pd.DataFrame | None = None,
+    *,
+    open_deals: pd.DataFrame,
     reference_date: pd.Timestamp | None = None,
 ) -> Calibration:
     """Calcula tudo que o scoring precisa a partir do histórico.
 
     `closed` (Won/Lost) calibra F1 e a curva do F2. `open_deals` (Engaging, sem
-    close_*) entra na curva do F2 só como **censura**: um deal aberto há 200 dias
-    esteve vivo em todas as idades até 200 e nunca fechou — sem ele, "vivos" na
-    última faixa vira igual a "decididos" e o degrau satura em 100 por construção
-    (revisão externa, B1). `reference_date` é o "hoje" do snapshot; default = última
-    data dos dados. Nada usa a data de hoje.
+    close_*) é **obrigatório** e entra na curva do F2 só como censura: um deal
+    aberto há 200 dias esteve vivo em todas as idades até 200 e nunca fechou — sem
+    ele, "vivos" na última faixa vira igual a "decididos" e o degrau satura em 100
+    por construção (revisão externa, B1). Não tem default de propósito: um
+    esquecimento e a tautologia volta. Para calibrar sem abertos (só em teste),
+    passe um DataFrame vazio. `reference_date` é o "hoje" do snapshot; default =
+    última data dos dados. Nada usa a data de hoje.
     """
+    if open_deals is None:
+        raise TypeError("calibrate() exige open_deals (os abertos entram na curva do F2 como censura)")
     cfg = config or ScoringConfig()
     closed = closed[closed["deal_stage"].isin(["Won", "Lost"])].copy()
     if closed.empty:
@@ -120,13 +125,10 @@ def calibrate(
     closed["won"] = (closed["deal_stage"] == "Won").astype(int)
     closed["days"] = (closed["close_date"] - closed["engage_date"]).dt.days
 
-    if open_deals is not None:
-        open_eng = open_deals[(open_deals["deal_stage"] == "Engaging") & open_deals["engage_date"].notna()]
-    else:
-        open_eng = None
+    open_eng = open_deals[(open_deals["deal_stage"] == "Engaging") & open_deals["engage_date"].notna()]
     if reference_date is None:
         reference_date = closed["close_date"].max()
-        if open_eng is not None and len(open_eng):
+        if len(open_eng):
             reference_date = max(reference_date, open_eng["engage_date"].max())
     reference_date = pd.Timestamp(reference_date)
 
@@ -150,7 +152,7 @@ def calibrate(
     cohort_start = closed["close_date"].min()
     coorte = closed[closed["engage_date"] >= cohort_start]
     events = coorte["days"].to_numpy()
-    if open_eng is not None and len(open_eng):
+    if len(open_eng):
         open_coorte = open_eng[open_eng["engage_date"] >= cohort_start]
         censored = (reference_date - open_coorte["engage_date"]).dt.days.to_numpy()
         n_open_beyond_wall = int(((reference_date - open_eng["engage_date"]).dt.days > wall).sum())
@@ -373,8 +375,8 @@ def score_open_deals(
         marcadores = []
         if categoria == "Agir" and age <= cfg.janela_critica_max:
             marcadores.append("janela crítica")
-        if categoria == "Agir" and age >= cfg.ultima_janela_min:
-            marcadores.append("última janela")
+        if categoria == "Agir" and age >= cfg.perto_da_parede_min:
+            marcadores.append("perto da parede")
 
         # Base do histórico: tamanho da amostra do F1 (só do F1 — o F2 não tem medida equivalente)
         if n_cell >= cfg.base_ampla:
