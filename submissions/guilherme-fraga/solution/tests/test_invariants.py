@@ -40,6 +40,8 @@ def test_f2_e_um_u(calib):
     z = calib.zones.set_index("zona")["f2"]
     assert z["0–14"] == 100 and z["91–parede"] == 100
     assert z["61–90"] > z["15–60"]
+    # a curva dá 20 no vale; o piso de produto sobe para 35 (05-backtest)
+    assert calib.zones.set_index("zona")["f2_curva"]["15–60"] == 20 and z["15–60"] == 35
     assert min(z["0–14"], z["91–parede"]) > z["61–90"]
     assert calib.wall_days == 138
 
@@ -47,9 +49,11 @@ def test_f2_e_um_u(calib):
 def test_f2_override_so_quando_pedido(crm):
     closed, _ = split_pipeline(crm.pipeline)
     padrao = calibrate(closed, crm.products).zones.set_index("zona")["f2"]
-    assert padrao["15–60"] == 20
-    forcado = calibrate(closed, crm.products, ScoringConfig(f2_overrides=(("15–60", 35),))).zones.set_index("zona")["f2"]
-    assert forcado["15–60"] == 35 and forcado["61–90"] == padrao["61–90"]
+    assert padrao["15–60"] == 35
+    forcado = calibrate(closed, crm.products, ScoringConfig(f2_overrides=(("15–60", 50),))).zones.set_index("zona")["f2"]
+    assert forcado["15–60"] == 50 and forcado["61–90"] == padrao["61–90"]
+    sem_piso = calibrate(closed, crm.products, ScoringConfig(vale_minimo=0)).zones.set_index("zona")["f2"]
+    assert sem_piso["15–60"] == 20
     with pytest.raises(ValueError):
         calibrate(closed, crm.products, ScoringConfig(f2_overrides=(("nada", 1),)))
 
@@ -109,13 +113,13 @@ def test_prospecting_sem_f2_e_renormalizado(scored):
     p = scored[scored["categoria"] == "Engajar"]
     assert p["F2"].isna().all()
     assert p["frase_F2"].str.contains("não há sinal de tempo").all()
-    esperado = (35 * p["F1"] + 25 * p["F3"]) / 60
+    esperado = (20 * p["F1"] + 25 * p["F3"]) / 45
     assert np.allclose(p["score"], esperado, atol=0.1)  # F1 e score arredondados a 1 casa
 
 
 def test_engaging_usa_os_tres_pesos(scored):
     a = scored[scored["categoria"] == "Agir"]
-    esperado = (40 * a["F2"] + 35 * a["F1"] + 25 * a["F3"]) / 100
+    esperado = (55 * a["F2"] + 20 * a["F1"] + 25 * a["F3"]) / 100
     assert np.allclose(a["score"], esperado, atol=0.1)
 
 

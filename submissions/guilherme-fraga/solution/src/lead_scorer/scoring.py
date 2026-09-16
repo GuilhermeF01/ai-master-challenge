@@ -3,8 +3,8 @@
 Implementa process-log/04-logica-do-score.md. O score é FILA DE ATENÇÃO,
 não probabilidade de fechar.
 
-    score = (w_f2 * F2 + w_f1 * F1 + w_f3 * F3) / 100            # Engaging <= parede
-    score = (w_f1 * F1 + w_f3 * F3) / (w_f1 + w_f3)              # Prospecting (sem F2)
+    score = (55 * F2 + 20 * F1 + 25 * F3) / 100                  # Engaging <= parede
+    score = (20 * F1 + 25 * F3) / 45                             # Prospecting (sem F2)
     Decidir (Engaging > parede): sem score de fila
 
 Toda calibração vem dos deals fechados (`calibrate`). Nada usa a data de hoje:
@@ -32,8 +32,8 @@ class ScoringConfig:
 
     k1: int = 50  # puxa a média do vendedor para a média geral
     k2: int = 50  # puxa a célula vendedor×produto para a média do vendedor
-    w_f2: int = 40  # atenção pela idade
-    w_f1: int = 35  # encaixe vendedor×produto
+    w_f2: int = 55  # atenção pela idade (era 40; backtest em process-log/05)
+    w_f1: int = 20  # encaixe vendedor×produto (era 35; encaixe é contexto, não motor)
     w_f3: int = 25  # valor em jogo
     f1_scale_pp: float = 15.0  # ±15 pp em torno da média geral cobre 0–100
     conf_alta: int = 50  # n da célula para confiança Alta
@@ -46,6 +46,9 @@ class ScoringConfig:
     )
     janela_critica_max: int = 14
     ultima_janela_min: int = 91
+    # Piso do vale (zona 15–60). A curva dá 20; decisão de produto (05-backtest): a zona
+    # que mais ganha em todos os cortes não pode ficar no fundo da fila.
+    vale_minimo: int = 35
     # Só para experimentos (backtest): força o valor de uma zona, ex. (("15–60", 35),)
     f2_overrides: tuple[tuple[str, int], ...] = ()
 
@@ -143,6 +146,9 @@ def calibrate(closed: pd.DataFrame, products: pd.DataFrame, config: ScoringConfi
                       "desfechos": int(inside["desfechos"].sum()),
                       "pct_desfechos": float(inside["desfechos"].sum() / len(days))})
     zones = pd.DataFrame(zrows)
+    zones["f2_curva"] = zones["f2"]  # o que a curva deu, antes do piso
+    zones.loc[zones["zona"] == "15–60", "f2"] = max(int(zones.loc[zones["zona"] == "15–60", "f2"].iloc[0]),
+                                                   cfg.vale_minimo)
     for zona, valor in cfg.f2_overrides:
         if zona not in set(zones["zona"]):
             raise ValueError(f"Zona desconhecida em f2_overrides: {zona!r}")

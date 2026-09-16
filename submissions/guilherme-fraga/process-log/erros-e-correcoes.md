@@ -29,3 +29,10 @@
 - **O que aconteceu:** a IA rodou `git add -f solution/src solution/tests` (diretórios). O `-f` existe porque o `.gitignore` raiz ignora `submissions/`, mas ele também passa por cima do `.gitignore` da própria pasta — e levou 5 arquivos `.pyc` junto. Corrigido em commit separado (`64affb6`, `git rm --cached`), sem amend.
 - **Correção de processo:** `git add -f` só em **arquivos** novos, nomeados um a um. Nunca em diretório.
 - **Causa raiz:** a IA tratou o `-f` como "necessário por causa do ignore raiz" e esqueceu que ele é global: força tudo, inclusive o que o ignore local deveria segurar. Erro de processo, não de código — conta igual.
+
+## 5. Backtest mediu "quantos ganharam" numa fila que promete "onde a decisão está acontecendo"
+
+- **Etapa:** [05-backtest.md](05-backtest.md), primeira rodada.
+- **Proposta da IA:** medir a fila por win rate do top 20% — e concluir que "o topo da fila ganha menos que o grupo (−5,7 pp) e que ordenar por valor (−7,3 pp)", apresentando isso como o achado principal.
+- **Correção:** não errado, mas errada para a fila. "Quantos ganharam" mede onde se ganha; a fila é para achar onde a decisão está acontecendo agora. Métrica certa: dos top 20%, quantos tiveram **desfecho (ganho ou perda) nos 14 dias seguintes a T**. Com ela, a fila faz o dobro de ordenar por valor (41,5% vs 21,7%).
+- **Causa raiz:** a IA reproduziu o erro nº 1 um nível acima. No nº 1 ela desenhou o F2 como probabilidade; corrigido, desenhou o U — e depois avaliou o U com a métrica de probabilidade que o próprio 04 dizia não ser o objetivo. Aceitou a especificação do teste ("quantos ganharam") literalmente, viu que o resultado contradizia o desenho, e explicou a contradição em vez de questionar a métrica. O sinal de alerta estava lá: "este backtest não consegue validar a tese da atenção" — a resposta certa era propor a métrica que consegue, não registrar a limitação.

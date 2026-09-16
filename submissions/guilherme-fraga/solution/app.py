@@ -16,7 +16,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from lead_scorer import calibrate, load_crm, score_open_deals, split_pipeline  # noqa: E402
+from lead_scorer import ScoringConfig, calibrate, load_crm, score_open_deals, split_pipeline  # noqa: E402
 
 st.set_page_config(page_title="Lead Scorer — fila de atenção", page_icon="🎯", layout="wide")
 
@@ -42,6 +42,7 @@ def carregar() -> tuple[pd.DataFrame, dict]:
         "win_rate": calib.global_rate,
         "n_fechados": calib.n_closed,
         "degraus": " · ".join(f"{int(z.lo)} a {int(z.hi)} dias: {int(z.f2)}" for z in calib.zones.itertuples()),
+        "pesos": (calib.config.w_f2, calib.config.w_f1, calib.config.w_f3),
         "teams": crm.teams,
     }
     return scored, meta
@@ -293,11 +294,13 @@ def main() -> None:
                                   placeholder="Todos os produtos")
         st.divider()
         st.markdown("**Como o score é feito**")
+        w2, w1, w3 = meta["pesos"]
         st.markdown(
-            "- **F2 · atenção pela idade** (peso 40): onde o esforço muda o resultado. "
+            f"- **F2 · atenção pela idade** (peso {w2}): onde a decisão está acontecendo. "
             f"Degraus: {meta['degraus']}\n"
-            "- **F1 · encaixe vendedor × produto** (peso 35): seu histórico nesse produto, suavizado\n"
-            "- **F3 · valor em jogo** (peso 25): preço de tabela do produto, em log\n\n"
+            f"- **F1 · encaixe vendedor × produto** (peso {w1}): seu histórico nesse produto, suavizado — "
+            "contexto, não motor\n"
+            f"- **F3 · valor em jogo** (peso {w3}): preço de tabela do produto, em log\n\n"
             "Prospecting usa só F1 e F3. Acima da parede não há score: há decisão."
         )
         st.caption("Lógica completa em process-log/04-logica-do-score.md")

@@ -2,6 +2,7 @@
 
 > Regras decididas a partir de [03-teste-hipoteses.md](03-teste-hipoteses.md) e do veredito em [01-hipoteses.md](01-hipoteses.md).
 > Primeira versão aprovada manualmente ([screenshot](screenshots/01-aprovacao-manual-logica-do-score.png)) com três correções, registradas em [erros-e-correcoes.md](erros-e-correcoes.md): F2 refeito como atenção em U, K2 de 30 para 50, e ordem dentro de Decidir.
+> **Revisão após o backtest ([05](05-backtest.md)):** pesos 40/35/25 → **55/20/25** e vale do F2 20 → **35**. As duas mudanças estão marcadas abaixo.
 
 ## O que o score é (e não é)
 
@@ -67,12 +68,13 @@ A coluna "por dia" é o U: 2,6–3,8% nos primeiros 14 dias, cai para 0,5% entre
 | Zona | F2 | O que a curva diz |
 |---|---|---|
 | **0–14 dias** | **100** | 41,8% de todos os desfechos e **50,5% das perdas** acontecem aqui. É onde se perde — e onde o esforço evita a perda. |
-| **15–60 dias** | **20** | Vale do U: 13,8% dos desfechos em 46 dias, 0,52% por dia — 5× mais calmo que as pontas. Follow-up normal. |
+| **15–60 dias** | **35** (curva: 20) | Vale do U: 13,8% dos desfechos em 46 dias, 0,52% por dia — 5× mais calmo que as pontas. Follow-up normal. **Piso de produto em 35** (ver abaixo). |
 | **61–90 dias** | **65** | Segunda onda: 24,2% dos desfechos (22% das perdas) em 30 dias. |
 | **91–138 dias** | **100** | Última janela antes da parede: **80% dos que fecham já fecharam aos 90**, 100% dos vivos são decididos aqui, nenhum deal passou de 138. |
 
-- O vale (15–60) sai da fórmula em 19, arredondado para 20. É mais baixo que "médio = 50" porque os dados dizem que a faixa é calma mesmo; se quiser um piso mais alto, é um número só para mudar, mas as pontas perdem contraste.
-  - **Ressalva registrada na aprovação:** 20 parece baixo — um deal de 45 dias com encaixe bom e valor alto fica atrás de quase todo deal novo. Fica em 20 por enquanto, sem mudar no chute; **revisar depois do backtest, com número na mão.**
+- O vale (15–60) sai da fórmula em 19, arredondado para 20. É mais baixo que "médio = 50" porque os dados dizem que a faixa é calma mesmo.
+  - **Ressalva registrada na aprovação:** 20 parece baixo — um deal de 45 dias com encaixe bom e valor alto fica atrás de quase todo deal novo. Ficou em 20 até o backtest.
+  - **Decidido no [05](05-backtest.md): piso de 35.** O backtest não distingue 20 de 35 de 50 (o top 20% é definido pelas pontas do U), então foi decisão de produto: a zona 15–60 é a que mais ganha em todos os cortes (63–70%) e não pode ficar no fundo da fila. O motor aplica `vale_minimo = 35` sobre o que a curva der e guarda o valor da curva em `f2_curva`; se os dados um dia derem mais que 35, os dados mandam.
 - 61–90 fica como degrau próprio (65) e não dentro do "médio" porque a curva mostra uma segunda onda ali — um quarto de todos os desfechos.
 - As duas pontas ficam em 100: a categoria e os marcadores dizem qual é qual (*janela crítica* ≤ 14 / *última janela* 91–138). Dentro da mesma pontuação de F2, F1 e F3 desempatam.
 - A curva é calculada dos dados na hora de rodar, não é hard-coded — se o CSV mudar, os degraus mudam. Os cortes de faixa (14 / 60 / 90 / 138) são fixos.
@@ -103,15 +105,17 @@ A coluna "por dia" é o U: 2,6–3,8% nos primeiros 14 dias, cai para 0,5% entre
 ## Pesos
 
 ```
-score = (40 * F2 + 35 * F1 + 25 * F3) / 100                     # Engaging
-score = (35 * F1 + 25 * F3) / 60                                # Prospecting (sem F2, renormalizado)
+score = (55 * F2 + 20 * F1 + 25 * F3) / 100                     # Engaging
+score = (20 * F1 + 25 * F3) / 45                                # Prospecting (sem F2, renormalizado)
 ```
+
+Eram 40 / 35 / 25 na aprovação. Revisados no [05](05-backtest.md): o AUC 0,515 do encaixe fora do período e as duas rodadas do backtest dizem a mesma coisa — **encaixe é contexto, não motor**. A frase do F1 continua no cartão; o número pesa menos.
 
 | Fator | Peso | Justificativa a partir dos spreads |
 |---|---|---|
-| F2 — Atenção pela idade | **40** | Maior spread do teste (22,1 pp por faixa; 17,4 pp pós-cut), grupos grandes (menor n = 89), e a curva acumulada mostra onde as decisões acontecem (mediana Lost 14 dias vs Won 57). É o sinal que o vendedor **não vê** no CRM: ele vê o stage, não a curva. |
-| F1 — Encaixe | **35** | Vendedor sozinho dá 15,4 pp; com produto sobe para 28,8 pp (n ≥ 50), mas parte disso é n pequeno e a suavização come parte do spread (F1 real fica entre 8 e 85). Fica logo abaixo da idade. Também é um sinal que o vendedor em parte já conhece — o app confirma mais do que revela. |
-| F3 — Valor | **25** | Não prediz fechamento (4,8 pp entre produtos), então não pode pesar como os outros dois. Entra porque fila de atenção é sobre dinheiro: a sinal igual, o deal maior vem antes. Com 25, a diferença máxima por valor é 25 pontos — GTX Pro (72) ganha 18 pontos sobre MG Special (0) em igualdade, mas um GTK 500 com encaixe e idade ruins (≈ 25 + 3 + 8 ≈ 36) não passa um deal mediano no vale com bom encaixe (≈ 8 + 29 + 18 ≈ 55). |
+| F2 — Atenção pela idade | **55** (era 40) | Maior spread do teste (22,1 pp por faixa; 17,4 pp pós-cut), grupos grandes (menor n = 89), e a curva acumulada mostra onde as decisões acontecem (mediana Lost 14 dias vs Won 57). É o sinal que o vendedor **não vê** no CRM: ele vê o stage, não a curva. No backtest, é o que faz o top 20% da fila se decidir em 14 dias o dobro das vezes que ordenar por valor. |
+| F1 — Encaixe | **20** (era 35) | Vendedor sozinho dá 15,4 pp; com produto sobe para 28,8 pp (n ≥ 50), mas parte disso é n pequeno e a suavização come parte do spread (F1 real fica entre 8 e 85). Fora do período, quase não ordena (AUC 0,515; backtest indiferente a 35 / 20 / 0). É um sinal que o vendedor em parte já conhece — o app confirma mais do que revela. Fica como contexto. |
+| F3 — Valor | **25** | Não prediz fechamento (4,8 pp entre produtos), então não pode pesar como os outros dois. Entra porque fila de atenção é sobre dinheiro: a sinal igual, o deal maior vem antes. Com 25, a diferença máxima por valor é 25 pontos — GTX Pro (72) ganha 18 pontos sobre MG Special (0) em igualdade, mas um GTK 500 no vale com encaixe ruim (≈ 19 + 2 + 25 ≈ 46) não passa um deal em janela crítica com encaixe mediano (≈ 55 + 10 + 9 ≈ 74). |
 
 ## Categorias de ação
 
@@ -162,7 +166,7 @@ Testes automatizados (`pytest`), rodam com `pip install` + um comando:
 2. **Remoção** — apagar as duas colunas dos deals abertos antes de chamar o scorer: saída idêntica. O scorer recebe os abertos **sem essas colunas** por construção (o loader as descarta), e o teste verifica que elas não chegam lá.
 3. **Isolamento do histórico** — embaralhar `close_value` dos deals **fechados**: saída idêntica (prova que o valor real de fechamento não vaza nem pela calibração). `close_date` dos fechados não entra nesse teste porque é ele que define a duração da curva — isso é histórico, não feature.
 
-Além desses: teste de que a soma dos pesos dá 100 (e 60 renormalizado para Prospecting), de que F1/F2/F3 ficam em [0, 100], de que o F2 é U (0–14 e 91–138 > 61–90 > 15–60), e de que a correção `GTXPro → GTX Pro` deixa 0 produtos órfãos.
+Além desses: teste de que a soma dos pesos dá 100 (e 45 renormalizado para Prospecting), de que F1/F2/F3 ficam em [0, 100], de que o F2 é U (0–14 e 91–138 > 61–90 > 15–60), e de que a correção `GTXPro → GTX Pro` deixa 0 produtos órfãos.
 
 ## Saída por deal
 
@@ -176,8 +180,8 @@ Filtros do app: vendedor, manager, região (o bônus do README). Sem API key, se
 
 ## Decisões fechadas
 
-1. Pesos 40 / 35 / 25.
+1. Pesos ~~40 / 35 / 25~~ → **55 / 20 / 25** (revisto no 05).
 2. K1 = 50, **K2 = 50**.
-3. F1 em ±15 pp; **F2 em degraus de atenção (U)**; F3 em log.
+3. F1 em ±15 pp; **F2 em degraus de atenção (U), com piso de 35 no vale** (revisto no 05); F3 em log.
 4. Ordem das categorias Agir → Engajar → Decidir; **Decidir ordenado por valor**.
 5. Marcadores "janela crítica" e "última janela" como rótulos dentro de Agir.
