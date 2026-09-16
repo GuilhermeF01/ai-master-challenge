@@ -335,10 +335,12 @@ def score_open_deals(
         })
 
     out = pd.DataFrame(rows)
-    # Categoria manda na ordem; score desempata em Agir/Engajar; Decidir por valor, depois idade
+    # Categoria manda na ordem; score desempata em Agir/Engajar; Decidir por valor, depois idade.
+    # Empate no score: janela crítica primeiro — ali a perda é questão de dias.
     decidir = out["categoria"] == "Decidir"
+    critica = out["marcadores"].fillna("").str.contains("janela crítica")
     out["_k2"] = np.where(decidir, -out["valor_produto"], -out["score"].fillna(-1))
-    out["_k3"] = np.where(decidir, -out["idade_dias"].fillna(0), 0)
+    out["_k3"] = np.where(decidir, -out["idade_dias"].fillna(0), np.where(critica, 0, 1))
     out = (
         out.sort_values(["ordem_categoria", "_k2", "_k3", "opportunity_id"])
         .drop(columns=["_k2", "_k3"])

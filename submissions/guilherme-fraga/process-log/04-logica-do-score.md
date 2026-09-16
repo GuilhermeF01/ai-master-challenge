@@ -124,6 +124,7 @@ A **categoria manda na ordem**; o score desempata **dentro** dela.
 | 3 | **Decidir** | Engaging, idade > 138 dias | **`sales_price` desc**, desempate por idade desc | Não é esforço, é decisão: **requalificar ou descartar**. Sem score de fila. Ordenado por valor para o manager limpar os grandes primeiro. |
 
 - Engaging antes de Prospecting porque está mais perto do dinheiro; Decidir por último porque não é trabalho de venda.
+- **Empate no score dentro de Agir: janela crítica (≤ 14 dias) primeiro** — ali a perda é questão de dias. (Ajuste feito ao ver o app: Boris Faz tinha dois GTX Pro com 81, o de 117 dias na frente do de 12.)
 - Marcadores dentro de Agir (rótulo, não categoria): **janela crítica** (≤ 14 dias) e **última janela** (91–138 dias). O F2 já carrega a urgência no número; o marcador só nomeia qual das duas pontas do U o deal está.
 - Regra fixa de dados: **não existe deal fechado sem passar por Engaging** (H1). Prospecting nunca vai direto para Decidir.
 

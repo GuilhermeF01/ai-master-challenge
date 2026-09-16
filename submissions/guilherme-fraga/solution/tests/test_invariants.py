@@ -120,6 +120,17 @@ def test_ordem(scored):
     assert d.groupby("valor_produto")["idade_dias"].apply(lambda s: s.is_monotonic_decreasing).all()
 
 
+def test_empate_no_score_janela_critica_primeiro(scored):
+    a = scored[scored["categoria"] == "Agir"].reset_index(drop=True)
+    critica = a["marcadores"].fillna("").str.contains("janela crítica")
+    for score, grupo in a.groupby("score"):
+        flags = critica.loc[grupo.index].tolist()
+        assert flags == sorted(flags, reverse=True), f"score {score}: janela crítica deveria vir antes"
+    # o caso concreto: Boris Faz tem dois GTX Pro empatados, o de 12 dias vem antes do de 117
+    boris = a[(a["vendedor"] == "Boris Faz") & (a["produto"] == "GTX Pro")]
+    assert boris["score"].nunique() == 1 and boris["idade_dias"].tolist()[:2] == [12, 117]
+
+
 def test_confianca(scored):
     n = scored["n_celula"]
     assert (scored.loc[n >= 50, "confianca"] == "Alta").all()
