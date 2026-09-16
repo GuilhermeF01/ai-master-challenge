@@ -308,3 +308,23 @@ Referência: vendedor sozinho 15,4 pp (menor n=79); produto sozinho 4,8 pp. Cél
 | ≤ 138 | 100,0% | 100,0% | 100,0% |
 
 Mediana de dias em Engaging: Won 57 · Lost 14 · todos 45.
+
+### D — Check de ML: um modelo faria melhor que a heurística?
+
+Regressão logística nos 6.711 fechados com **split temporal**: treina nos que fecharam antes de 2017-09-29 (4.680 deals, win rate 64,2%), testa nos que fecharam depois (2.031 deals, win rate 60,8%). Script: [`solution/analysis/ml_check.py`](../solution/analysis/ml_check.py) (só análise; requer scikit-learn, que não é dependência do app). Heurísticas calibradas só no treino.
+
+| Modelo | Features | AUC treino | AUC teste |
+|---|---|---|---|
+| LR vendedor + produto + idade (linear) | 38 | 0,591 | 0,565 |
+| LR vendedor + produto + idade (faixas) | 44 | 0,602 | **0,572** |
+| LR vendedor + produto (sem idade) | 37 | 0,548 | 0,528 |
+| LR idade (faixas) só | 7 | 0,589 | 0,569 |
+| LR vendedor×produto + idade (faixas) | 185 | 0,640 | 0,564 |
+| Heurística F1 só (célula suavizada, K1=K2=50) | 1 | 0,595 | 0,515 |
+| Heurística score completo (F2 em U) — não é probabilidade | 3 | 0,496 | 0,477 |
+
+- Melhor modelo: 0,572 de AUC no teste. Idade sozinha dá 0,569 — praticamente tudo que o modelo sabe vem da idade.
+- Vendedor + produto sem idade: 0,528. A interação vendedor×produto sobe no treino (0,640) e cai no teste (0,564): overfit.
+- F1 da heurística: 0,595 no treino → **0,515 no teste**. O encaixe vendedor×produto calibrado num período quase não ordena o período seguinte.
+- Score completo abaixo de 0,5 é esperado: o F2 em U dá 100 à faixa de 0–14 dias, que tem a menor win rate. O score ordena por atenção, não por chance de ganhar — o número confirma que ele não é probabilidade.
+- Ressalva: "idade" aqui é a duração total do deal fechado, conhecida só no fechamento. Para um deal aberto só se conhece a idade até hoje. O AUC com idade é um teto otimista, não o que um modelo entregaria em produção.
