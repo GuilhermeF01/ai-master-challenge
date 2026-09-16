@@ -107,7 +107,7 @@ Calibrado em 5.739 fechados da coorte + 1.376 abertos censurados em 2017-12-31:
 | GTK 500 | 26.768 | 100 |
 
 - Log e não linear porque em escala linear o GTK 500 (26.768) vira 100 e todo o resto fica abaixo de 21 — o fator deixaria de distinguir GTX Pro de MG Special, que é a distinção que aparece 8.700 vezes no pipeline. Log dá um degrau por ordem de grandeza.
-- Frases: *"GTX Pro: USD 4.821 em jogo — 4º produto mais caro dos 7."* / *"MG Special: USD 55 — o produto mais barato do catálogo."*
+- Frases: *"GTX Pro: USD 4.821 em jogo — 3º produto mais caro dos 7."* / *"MG Special: USD 55 — o produto mais barato do catálogo."*
 
 ## Pesos
 

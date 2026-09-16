@@ -267,9 +267,12 @@ def factor_fit(agent: str, product: str, calib: Calibration) -> tuple[float, str
     return f1, frase, n_cell
 
 
-def factor_age(age_days: int | None, calib: Calibration) -> tuple[float | None, str, str]:
-    """F2 — necessidade de atenção pela idade (U). Devolve (F2 ou None, frase, zona)."""
+def factor_age(age_days: int | None, calib: Calibration, stage: str = "Prospecting") -> tuple[float | None, str, str]:
+    """F2 — necessidade de atenção pela idade. Devolve (F2 ou None, frase, zona)."""
     if age_days is None:
+        if stage == "Engaging":
+            return None, ("Engaging sem data de engajamento no CRM: não há sinal de tempo. "
+                          "Score usa só encaixe e valor — preencha a data para entrar na fila de Agir."), "sem data"
         return None, "Sem data de engajamento: não há sinal de tempo. Score usa só encaixe e valor.", "prospecting"
 
     wall, notas = calib.wall_days, calib.notes
@@ -349,15 +352,18 @@ def score_open_deals(
     rows = []
     for d in open_deals.itertuples(index=False):
         engaging = d.deal_stage == "Engaging"
-        age = int((reference_date - d.engage_date).days) if engaging and pd.notna(d.engage_date) else None
+        # Engaging sem engage_date (não ocorre no CSV atual, mas pode ocorrer num CRM real):
+        # sem sinal de tempo, vai para Engajar com frase própria (revisão D1)
+        tem_tempo = engaging and pd.notna(d.engage_date)
+        age = int((reference_date - d.engage_date).days) if tem_tempo else None
 
         f1, frase_f1, n_cell = factor_fit(d.sales_agent, d.product, calib)
-        f2, frase_f2, zona = factor_age(age, calib)
+        f2, frase_f2, zona = factor_age(age, calib, stage=d.deal_stage)
         f3, frase_f3 = factor_value(d.product, calib)
 
-        if engaging and age is not None and age > calib.wall_days:
+        if tem_tempo and age > calib.wall_days:
             categoria, score = "Decidir", np.nan
-        elif engaging:
+        elif tem_tempo:
             categoria = "Agir"
             score = (cfg.w_f2 * f2 + cfg.w_f1 * f1 + cfg.w_f3 * f3) / 100
         else:

@@ -209,3 +209,29 @@ def test_funciona_sem_conta(scored):
     sem_conta = scored["conta"].isna()
     assert sem_conta.sum() == 1425
     assert scored.loc[sem_conta & (scored["categoria"] != "Decidir"), "score"].notna().all()
+
+
+# ---------------------------------------------------------------------------
+# Casos de borda (revisão externa D1)
+# ---------------------------------------------------------------------------
+
+
+def _linha(**kw) -> pd.DataFrame:
+    base = dict(opportunity_id="X1", sales_agent="Moses Frase", product="GTX Basic", account=None,
+                deal_stage="Engaging", engage_date=pd.NaT)
+    base.update(kw)
+    return pd.DataFrame([base])
+
+
+def test_engaging_sem_engage_date_vai_para_engajar(crm, calib):
+    from lead_scorer import score_open_deals
+    out = score_open_deals(_linha(), calib, crm.teams)
+    assert out["categoria"].iloc[0] == "Engajar" and pd.isna(out["F2"].iloc[0])
+    assert "Engaging sem data de engajamento" in out["frase_F2"].iloc[0]
+    assert out["score"].notna().all() and out["marcadores"].isna().all()
+
+
+def test_engage_date_depois_da_referencia_levanta_erro(crm, calib):
+    from lead_scorer import score_open_deals
+    with pytest.raises(ValueError, match="Idade negativa"):
+        score_open_deals(_linha(engage_date=pd.Timestamp("2018-03-01")), calib, crm.teams)

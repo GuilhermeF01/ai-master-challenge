@@ -131,12 +131,16 @@ Degraus 100 / 65 / 35 × 0,55 = saltos de 19,3 e 16,5 pontos; F1 real vai de 8 a
 
 **Onde:** `submissions/guilherme-fraga/` e `solution/` (não há README.md em nenhum dos dois; `git ls-files` confirma). O challenge lista os três como obrigatórios e o 05 diz "isso vai para o README como a evidência de que a ferramenta funciona". Se o README for escrito com o "41,5% vs 21,7%, o dobro", vai carregar B2 e B3.
 
+> **Resposta — aceito; fica para o fechamento.** O README (Setup / Lógica / Limitações) é a última etapa, depois da decisão do 05 v2 — exatamente para não carregar o "41,5% vs 21,7%". O que ele vai poder afirmar é o que o 05 v2 sustenta: ~1,6× sobre valor e acaso, empate com "mais novo primeiro", e o que a métrica não mede.
+
 ---
 
 ## DETALHE
 
 ### D1. Engaging sem `engage_date` derruba o scorer
 `scoring.py:291` dá `age = None`; `:299-301` entra em Agir e faz `cfg.w_f2 * None` → `TypeError`; `:307` faria `None <= 14`. Idade negativa (engage_date > referência) faz `zone_for` devolver `None` e `:228` quebra. O CSV atual não tem nenhum dos dois casos (0 Engaging sem data), então é latente. Eu roteava para Engajar com frase própria, ou levantava `ValueError` com mensagem, e testava com uma linha sintética.
+
+> **Resposta — aceito, corrigido (commit "fix(D1,D4–D7)").** Engaging sem `engage_date` vai para **Engajar** com frase própria ("Engaging sem data de engajamento no CRM… preencha a data para entrar na fila de Agir"); `engage_date` depois da referência levanta `ValueError("Idade negativa…")`. Os dois testados com linha sintética em `test_invariants.py`.
 
 ### D2. Frases hard-coded contradizem "a curva não é hard-coded"
 `scoring.py:230` "Metade das perdas acontece até o dia 14" (50,5% no total; 56,4% pós-março), `:239` "80% dos que fecham já fecharam aos 90" (79,8%; 85,3% pós-março), `:240` "nenhum passou de {wall}" (falso, ver B1). Calcular de `calib` ou reescrever.
@@ -151,14 +155,22 @@ Degraus 100 / 65 / 35 × 0,55 = saltos de 19,3 e 16,5 pontos; F1 real vai de 8 a
 ### D4. Testes fixam números do dataset, não propriedades
 `test_invariants.py:41-46` afirma `91–parede == 100` (tautologia, B1a) e `f2_curva["15–60"] == 20`. Nenhum teste com pipeline sintético que provaria que a curva responde aos dados (durações uniformes → plana). `backtest.py` não tem teste nenhum; faltaria pelo menos "calibração nunca vê `close_date ≥ T`" e "avaliação inclui deals ainda abertos em 31/12" (B2).
 
+> **Resposta — aceito, corrigido.** Os testes de número (`91–parede == 100`, `f2_curva["15–60"] == 20`) saíram no B1 e viraram propriedades: 0–14 é a escala, a última zona não satura, censura derruba a última faixa, hazard constante dá curva plana (sintético). Novo `tests/test_backtest.py`: calibração nunca vê `close_date ≥ T`; população inclui quem nunca fechou e quem fechou depois de T, sem colunas de leakage; quem nunca fechou conta zero; a janela de 14 dias cabe antes de 31/12; o empate esperado do baseline por valor dá o número certo num caso à mão. 35 testes.
+
 ### D5. Exemplo de frase errado no 04
 "GTX Pro: 4º produto mais caro dos 7": é o 3º (GTK 500, GTX Plus Pro, GTX Pro). O código diz 3º; o doc não.
+
+> **Resposta — aceito, corrigido.** "3º produto mais caro dos 7" no 04 (o código já dizia 3º).
 
 ### D6. Rótulo "vale 20" na config antiga
 `backtest.py:36` e tabela (a) do 05: com `vale_minimo=0` a curva calibrada em cada T dá 23 / 17 / 20, não 20. Inofensivo (o top 20% não enxerga o vale), mas o rótulo é aproximado.
 
+> **Resposta — aceito, corrigido na v2 do backtest (bloco B2).** A configuração antiga é rotulada "vale da curva" (`vale_minimo=0`), sem número fixo.
+
 ### D7. Dois `if __name__ == "__main__"` no backtest
 `backtest.py:204-206` e `:226-227`, com `dias_ate_a_perda` definido entre eles. Funciona pela ordem de execução do módulo; um `main()` só. `win_rate_topo_por_valor = taxa_topo_por_valor` (`:69`) é alias sem função.
+
+> **Resposta — aceito, corrigido na v2 do backtest.** Um `main()` só; o alias `win_rate_topo_por_valor` saiu.
 
 ---
 
