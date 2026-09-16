@@ -62,7 +62,7 @@ F1                = clip( 50 + (celula_suav − media_geral) * 100 / 30 , 0, 100
 
 A coluna "por dia" é o U: 2,6–3,8% nos primeiros 14 dias, cai para 0,5% entre 15 e 60, volta a 1,8% entre 61 e 90 e passa de 2,9% a partir do dia 91.
 
-**Degraus do F2** — `por dia ÷ 2,79%` (a taxa da zona 0–14), limitado a 100:
+**Degraus do F2** — `por dia ÷ 2,79%` (a taxa da zona inteira 0–14), limitado a 100. Cada zona recebe a atenção do seu **trecho mais decisivo** (a faixa fina de maior "por dia" dentro dela) — é o que faz 91–138 chegar a 100 pelo trecho 121–138, e é a regra que o código implementa:
 
 | Zona | F2 | O que a curva diz |
 |---|---|---|
