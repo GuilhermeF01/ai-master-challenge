@@ -44,6 +44,16 @@ def test_f2_e_um_u(calib):
     assert calib.wall_days == 138
 
 
+def test_f2_override_so_quando_pedido(crm):
+    closed, _ = split_pipeline(crm.pipeline)
+    padrao = calibrate(closed, crm.products).zones.set_index("zona")["f2"]
+    assert padrao["15–60"] == 20
+    forcado = calibrate(closed, crm.products, ScoringConfig(f2_overrides=(("15–60", 35),))).zones.set_index("zona")["f2"]
+    assert forcado["15–60"] == 35 and forcado["61–90"] == padrao["61–90"]
+    with pytest.raises(ValueError):
+        calibrate(closed, crm.products, ScoringConfig(f2_overrides=(("nada", 1),)))
+
+
 def test_celula_pequena_nao_manda():
     """Peso da célula = n / (n + K2): 17% com 10 deals, 38% com 30, 67% com 100."""
     k2 = ScoringConfig().k2

@@ -46,6 +46,8 @@ class ScoringConfig:
     )
     janela_critica_max: int = 14
     ultima_janela_min: int = 91
+    # Só para experimentos (backtest): força o valor de uma zona, ex. (("15–60", 35),)
+    f2_overrides: tuple[tuple[str, int], ...] = ()
 
     def __post_init__(self) -> None:
         if self.w_f1 + self.w_f2 + self.w_f3 != 100:
@@ -141,6 +143,10 @@ def calibrate(closed: pd.DataFrame, products: pd.DataFrame, config: ScoringConfi
                       "desfechos": int(inside["desfechos"].sum()),
                       "pct_desfechos": float(inside["desfechos"].sum() / len(days))})
     zones = pd.DataFrame(zrows)
+    for zona, valor in cfg.f2_overrides:
+        if zona not in set(zones["zona"]):
+            raise ValueError(f"Zona desconhecida em f2_overrides: {zona!r}")
+        zones.loc[zones["zona"] == zona, "f2"] = int(valor)
 
     # F3: preço em log, 0 = mais barato, 100 = mais caro
     prod = products.set_index("product")[["sales_price"]].copy()
