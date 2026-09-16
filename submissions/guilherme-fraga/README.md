@@ -18,6 +18,8 @@ Construí uma fila de atenção para o vendedor abrir na segunda de manhã: um a
 
 ### Setup — 3 comandos, sem API key
 
+**App no ar:** https://ai-master-challenge-production-542c.up.railway.app (Railway; mesmo código, mesmos CSVs).
+
 ```bash
 cd submissions/guilherme-fraga/solution
 pip install -r requirements.txt        # pandas, streamlit, pytest
@@ -32,7 +34,7 @@ Extras: `python src/score_pipeline.py` gera `output/pipeline_scored.csv` (os 2.0
 2. **Auditoria.** [`02-auditoria-dados.md`](process-log/02-auditoria-dados.md): `GTXPro` ≠ `GTX Pro` (1.480 linhas que o join perderia), `technolgy` (12 contas), 68% dos abertos sem conta, `close_value` vazio em todo deal aberto, última data 2017-12-31, nenhum `close_date` antes de 2017-03-01.
 3. **Teste das hipóteses** ([`03-teste-hipoteses.md`](process-log/03-teste-hipoteses.md)): win rate Won/(Won+Lost) por grupo, spread entre melhor e pior, tamanho de cada grupo. Quatro derrubadas (conta, setor, região/manager, conta que já comprou — esta última era artefato do `close_date`), uma não testável (todo deal fechado passou por Engaging), uma confirmada mas fraca (vendedor, 15,4 pp), e uma derrubada do jeito escrito mas confirmada no espírito (idade: nenhum deal fechou depois de 138 dias em Engaging; a mediana dos abertos era 165). Um check de ML com split temporal (AUC máximo 0,572; encaixe vendedor × produto 0,515 fora do período) mostrou que um modelo não faria melhor que uma heurística.
 4. **Lógica escrita e aprovada antes de codar** ([`04-logica-do-score.md`](process-log/04-logica-do-score.md), [print da aprovação](process-log/screenshots/01-aprovacao-manual-logica-do-score.png)).
-5. **Motor + testes de leakage** (`close_value`/`close_date` nunca entram como feature de deal aberto — três testes provam), **app**, **backtest**, **revisão externa** por outro modelo em sessão limpa ([`06-revisao-externa.md`](process-log/06-revisao-externa.md)), e quatro blocos de correção. 24 commits, um por etapa.
+5. **Motor + testes de leakage** (`close_value`/`close_date` nunca entram como feature de deal aberto — três testes provam), **app**, **backtest**, **revisão externa** por outro modelo em sessão limpa ([`06-revisao-externa.md`](process-log/06-revisao-externa.md)), e quatro blocos de correção. 26 commits, um por etapa.
 
 ### Lógica do score (resumo — completa no [04](process-log/04-logica-do-score.md))
 
@@ -176,9 +178,10 @@ Mais dois de processo: `git add -f` em diretório arrastou `__pycache__` (#4), e
 - [x] Screenshots — [`process-log/screenshots/`](process-log/screenshots/): [01 aprovação manual da lógica](process-log/screenshots/01-aprovacao-manual-logica-do-score.png) · [02 check de ML](process-log/screenshots/02-check-ml-f1-nao-generaliza.png) · [03 app, faixa do topo](process-log/screenshots/03-app-faixa-do-topo-e-achado-principal.png) · [04 app, fila do vendedor](process-log/screenshots/04-app-fila-do-vendedor-cartoes.png) · [05 revisão externa](process-log/screenshots/05-revisao-externa-fable-crivo.png)
 - [ ] Screen recording — não
 - [x] Chat exports — [`process-log/chat-exports/sessao-claude-code.md`](process-log/chat-exports/sessao-claude-code.md): a sessão inteira do Claude Code, das hipóteses ao README
-- [x] Git history — 24 commits em `submissions/guilherme-fraga/`, um por etapa, com `Co-Authored-By: Claude`
+- [x] Git history — 26 commits em `submissions/guilherme-fraga/`, um por etapa, com `Co-Authored-By: Claude`
 - [x] Narrativa escrita — [`01-hipoteses.md`](process-log/01-hipoteses.md) · [`02-auditoria-dados.md`](process-log/02-auditoria-dados.md) · [`03-teste-hipoteses.md`](process-log/03-teste-hipoteses.md) · [`04-logica-do-score.md`](process-log/04-logica-do-score.md) · [`05-backtest.md`](process-log/05-backtest.md) · [`06-revisao-externa.md`](process-log/06-revisao-externa.md) · [`erros-e-correcoes.md`](process-log/erros-e-correcoes.md) · [`baseline/`](process-log/baseline/)
 - [x] Código — [`solution/`](solution/) (README de setup e estrutura em [`solution/README.md`](solution/README.md)); análises reproduzíveis em [`solution/analysis/`](solution/analysis/)
+- [x] App rodando — https://ai-master-challenge-production-542c.up.railway.app
 
 ---
 
