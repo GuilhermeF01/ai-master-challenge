@@ -1,17 +1,22 @@
-"""Backtest da fila: finge que uma data T é hoje e vê se o topo da fila acertou.
+"""Backtest da fila: finge que uma data T é hoje e vê se o topo da fila achou onde a decisão estava.
 
-Para cada corte T:
-  1. calibra o score SÓ com deals que fecharam antes de T;
-  2. pega os deals que estavam em Engaging em T (engage_date <= T < close_date)
-     e que depois fecharam — o desfecho é conhecido;
+Para cada corte semanal T (abril a 17/12 — a janela de 14 dias precisa caber antes de 31/12):
+  1. calibra o score SÓ com o que fechou antes de T (os abertos em T entram na
+     curva do F2 como censurados, sem olhar o futuro);
+  2. população = TODOS os deals em Engaging em T: engajados até T e que fecharam
+     depois de T OU nunca fecharam até 31/12 (revisão externa B2 — antes só
+     entrava quem depois fechou, e isso escondia os que a fila mandou agir e
+     nunca se decidiram);
   3. aplica o score com reference_date = T (mesmo motor do app, mesma ordem);
-  4. dos top 20% em "Agir": (a) quantos tiveram DESFECHO (ganho ou perda) nos
-     14 dias seguintes a T — a métrica da fila, que promete achar onde a decisão
-     está acontecendo; (b) quantos ganharam — a métrica de probabilidade, que a
-     fila não promete. Ambas contra ordenar por valor e contra a média do grupo.
+  4. métrica: dos top 20% de "Agir", quantos tiveram DESFECHO (ganho ou perda)
+     até T + 14 dias. Quem nunca fechou conta zero.
+  Baselines (B3): "mais novo primeiro" (engage_date desc — o que o vendedor faz
+  no CRM sem ferramenta), "ordenar por valor", "F2 sozinho", e a média do grupo.
+  Resumo por mediana e amplitude nos cortes, não por três datas à mão (I1).
 
-Grade: vale do F2 (zona 15–60) em {20, 35, 50} × peso do F1 em {35, 20, 0}
-(o que sai do F1 vai para o F2; F3 fixo em 25). Nada aqui muda o app.
+A métrica de 14 dias mede tempo. F1 (encaixe) e F3 (valor) não são sinais de
+tempo e não conseguem movê-la; a grade de pesos abaixo existe para deixar isso
+visível, não para escolher peso.
 
 Rodar (a partir de solution/): python analysis/backtest.py
 """
@@ -28,200 +33,155 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from lead_scorer import ScoringConfig, calibrate, load_crm, score_open_deals  # noqa: E402
 from lead_scorer.loader import LEAK_COLUMNS  # noqa: E402
 
-CORTES = [pd.Timestamp("2017-07-01"), pd.Timestamp("2017-08-15"), pd.Timestamp("2017-10-01")]
-VALES = [20, 35, 50]
-PESOS_F1 = [35, 20, 0]
-TOPO = 0.20
+FIM_DOS_DADOS = pd.Timestamp("2017-12-31")
 JANELA_DIAS = 14
-ANTIGA = dict(w_f2=40, w_f1=35, w_f3=25, vale_minimo=0)   # 04 v1: 40/35/25, vale 20 (curva)
-NOVA = dict()                                             # default do motor após o 05
+TOPO = 0.20
+CORTES = list(pd.date_range("2017-04-03", FIM_DOS_DADOS - pd.Timedelta(days=JANELA_DIAS), freq="7D"))
+CORTES_ANTIGOS = [pd.Timestamp("2017-07-01"), pd.Timestamp("2017-08-15"), pd.Timestamp("2017-10-01")]
+
+ANTIGA = dict(w_f2=40, w_f1=35, w_f3=25, vale_minimo=0)  # 04 v1 (vale = o que a curva der)
+ATUAL = dict()  # default do motor
 
 
-def conjuntos(pipeline: pd.DataFrame, T: pd.Timestamp):
-    """(fechados antes de T, abertos em Engaging em T que depois fecharam, ganhou, decidiu em 14 dias)."""
-    closed = pipeline[pipeline["deal_stage"].isin(["Won", "Lost"])]
-    calib_set = closed[closed["close_date"] < T]
-    eval_set = closed[(closed["engage_date"] <= T) & (closed["close_date"] > T)].copy()
-    por_id = eval_set.set_index("opportunity_id")
-    won = por_id["deal_stage"].eq("Won")
-    decidiu14 = (por_id["close_date"] - T).dt.days <= JANELA_DIAS
-    # No dia T esses deals estavam em Engaging: é assim que o motor os vê
-    eval_open = eval_set.assign(deal_stage="Engaging").drop(columns=list(LEAK_COLUMNS))
-    return calib_set, eval_open, won, decidiu14
+# ---------------------------------------------------------------------------
+# Conjuntos em T
+# ---------------------------------------------------------------------------
+
+
+def conjuntos(pipeline: pd.DataFrame, T: pd.Timestamp) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+    """(fechados antes de T, todos os deals em Engaging em T, desfecho até T+14)."""
+    fechados = pipeline[pipeline["deal_stage"].isin(["Won", "Lost"])]
+    calib_set = fechados[fechados["close_date"] < T]
+    em_engaging = pipeline[
+        (pipeline["engage_date"] <= T)
+        & ((pipeline["close_date"] > T) | (pipeline["deal_stage"] == "Engaging"))
+    ]
+    decidiu = (em_engaging.set_index("opportunity_id")["close_date"] <= T + pd.Timedelta(days=JANELA_DIAS)).fillna(False)
+    # É assim que o motor os vê em T: em Engaging, sem close_*
+    populacao = em_engaging.assign(deal_stage="Engaging").drop(columns=list(LEAK_COLUMNS))
+    return calib_set, populacao, decidiu
+
+
+# ---------------------------------------------------------------------------
+# Rankings e métrica
+# ---------------------------------------------------------------------------
+
+
+def taxa_topo(ordem: pd.Series, indicador: pd.Series, frac: float) -> float:
+    """Taxa do indicador nos top X% de uma ordem de opportunity_id."""
+    k = int(round(frac * len(ordem)))
+    return float(indicador.loc[ordem.head(k)].mean()) if k else float("nan")
 
 
 def taxa_topo_por_valor(df: pd.DataFrame, indicador: pd.Series, frac: float) -> float:
-    """Top X% ordenando por preço do produto. Empates (só 7 preços) são resolvidos
-    de forma esperada: o grupo que cruza a linha entra proporcionalmente."""
+    """Top X% ordenando por preço do produto. Empates (só 7 preços) resolvidos de forma
+    esperada: o grupo de preço que cruza a linha entra proporcionalmente."""
     k = frac * len(df)
     restante, acum = k, 0.0
     for _valor, grupo in sorted(df.groupby("valor_produto"), key=lambda kv: -kv[0]):
         if restante <= 0:
             break
-        n = len(grupo)
-        taxa = indicador.loc[grupo["opportunity_id"]].mean()
-        usa = min(n, restante)
-        acum += usa * taxa
+        usa = min(len(grupo), restante)
+        acum += usa * indicador.loc[grupo["opportunity_id"]].mean()
         restante -= usa
     return acum / k
 
 
-win_rate_topo_por_valor = taxa_topo_por_valor
-
-
-def rodar_config(pipeline, products, teams, T, cfg: ScoringConfig) -> dict:
-    calib_set, eval_open, won, decidiu14 = conjuntos(pipeline, T)
-    calib = calibrate(calib_set, products, cfg)
-    fila = score_open_deals(eval_open, calib, teams, reference_date=T)
+def rodar(pipeline, products, teams, T, cfg: ScoringConfig) -> dict:
+    calib_set, populacao, decidiu = conjuntos(pipeline, T)
+    calib = calibrate(calib_set, products, cfg, open_deals=populacao, reference_date=T)
+    fila = score_open_deals(populacao, calib, teams, reference_date=T)
     agir = fila[fila["categoria"] == "Agir"].reset_index(drop=True)
-    decidir = fila[fila["categoria"] == "Decidir"]
+    if agir.empty:
+        return {}
+    nunca_fechou = set(pipeline.loc[pipeline["deal_stage"] == "Engaging", "opportunity_id"])
+    mais_novo = agir.sort_values(["engage_date", "opportunity_id"], ascending=[False, True])["opportunity_id"]
+    f2_so = agir.sort_values(["F2", "opportunity_id"], ascending=[False, True])["opportunity_id"]
     k = int(round(TOPO * len(agir)))
-    k50 = int(round(0.50 * len(agir)))
-    topo = agir.head(k)
-    ganhou_topo = won.loc[topo["opportunity_id"]]
     return {
-        "n_calib": len(calib_set), "n_eval": len(agir), "n_decidir_em_T": len(decidir),
-        "wr_decidir_em_T": won.loc[decidir["opportunity_id"]].mean() if len(decidir) else float("nan"),
-        "k": k,
-        # métrica da fila: desfecho (ganho OU perda) nos 14 dias seguintes a T
-        "dec14_topo_score": decidiu14.loc[topo["opportunity_id"]].mean(),
-        "dec14_topo_valor": taxa_topo_por_valor(agir, decidiu14, TOPO),
-        "dec14_grupo": decidiu14.loc[agir["opportunity_id"]].mean(),
-        "wr_topo_score": ganhou_topo.mean(),
-        "wr_topo_valor": win_rate_topo_por_valor(agir, won, TOPO),
-        "wr_topo50_score": won.loc[agir.head(k50)["opportunity_id"]].mean(),
-        "wr_topo50_valor": win_rate_topo_por_valor(agir, won, 0.50),
-        "pct_topo50_vale": agir.head(k50)["idade_dias"].between(15, 60).mean(),
-        "wr_grupo": won.loc[agir["opportunity_id"]].mean(),
-        "pct_topo_janela_critica": topo["marcadores"].fillna("").str.contains("janela crítica").mean(),
-        "pct_topo_ultima_janela": topo["marcadores"].fillna("").str.contains("última janela").mean(),
-        "idade_mediana_topo": topo["idade_dias"].median(),
+        "T": T, "n_calib": len(calib_set), "n_agir": len(agir),
+        "n_decidir_em_T": int((fila["categoria"] == "Decidir").sum()),
+        "n_nunca_fechou": int(agir["opportunity_id"].isin(nunca_fechou).sum()),
+        "fila": taxa_topo(agir["opportunity_id"], decidiu, TOPO),
+        "mais_novo": taxa_topo(mais_novo, decidiu, TOPO),
+        "f2_so": taxa_topo(f2_so, decidiu, TOPO),
+        "valor": taxa_topo_por_valor(agir, decidiu, TOPO),
+        "grupo": float(decidiu.loc[agir["opportunity_id"]].mean()),
+        "pct_topo_0_14": float(agir.head(k)["idade_dias"].le(14).mean()),
+        "pct_topo_91_138": float(agir.head(k)["idade_dias"].ge(91).mean()),
     }
+
+
+def resumo(rs: list[dict], chave: str) -> str:
+    v = pd.Series([r[chave] for r in rs if r])
+    return f"{v.median()*100:.1f}% ({v.min()*100:.0f}–{v.max()*100:.0f})"
+
+
+def vitorias(rs: list[dict], a: str, b: str) -> str:
+    rs = [r for r in rs if r]
+    return f"{sum(r[a] > r[b] for r in rs)} / {len(rs)}"
+
+
+# ---------------------------------------------------------------------------
+# Relatório
+# ---------------------------------------------------------------------------
 
 
 def main() -> None:
     crm = load_crm()
     p, products, teams = crm.pipeline, crm.products, crm.teams
 
-    print("## Cortes\n")
-    print("| T (finge que é hoje) | Fechados antes de T (calibração) | Engaging em T que fecharam depois | Top 20% (k) | Win rate do grupo | Top 20% por valor |")
+    print(f"## Cortes semanais: {len(CORTES)} (de {CORTES[0].date()} a {CORTES[-1].date()}), top {TOPO:.0%}, "
+          f"desfecho em {JANELA_DIAS} dias\n")
+    rs = [rodar(p, products, teams, T, ScoringConfig(**ATUAL)) for T in CORTES]
+    rs = [r for r in rs if r]
+    print("| Ordem | Mediana (min–máx) da taxa do top 20% | Vitórias da fila sobre esta ordem |")
+    print("|---|---|---|")
+    print(f"| **Fila (motor atual)** | **{resumo(rs, 'fila')}** | — |")
+    print(f"| Mais novo primeiro (engage_date desc) | {resumo(rs, 'mais_novo')} | {vitorias(rs, 'fila', 'mais_novo')} |")
+    print(f"| F2 sozinho | {resumo(rs, 'f2_so')} | {vitorias(rs, 'fila', 'f2_so')} |")
+    print(f"| Ordenar por valor | {resumo(rs, 'valor')} | {vitorias(rs, 'fila', 'valor')} |")
+    print(f"| Média do grupo (acaso) | {resumo(rs, 'grupo')} | {vitorias(rs, 'fila', 'grupo')} |")
+    pop = pd.Series([r["n_agir"] for r in rs])
+    nunca = pd.Series([r["n_nunca_fechou"] for r in rs])
+    print(f"\nPopulação de Agir por corte: mediana {pop.median():.0f} (min {pop.min()}, máx {pop.max()}); "
+          f"deles, nunca fecharam até 31/12: mediana {nunca.median():.0f} ({(nunca / pop).median():.0%}).")
+    print(f"Composição do top 20% da fila: mediana de {pd.Series([r['pct_topo_0_14'] for r in rs]).median():.0%} em 0–14 dias "
+          f"e {pd.Series([r['pct_topo_91_138'] for r in rs]).median():.0%} em 91–138.")
+
+    print("\n### Por corte\n")
+    print("| T | Agir em T | Nunca fecharam | Fila | Mais novo | F2 só | Valor | Grupo | Top 20% em 0–14 | em 91–138 |")
+    print("|---|---|---|---|---|---|---|---|---|---|")
+    for r in rs:
+        print(f"| {r['T'].date()} | {r['n_agir']} | {r['n_nunca_fechou']} | {r['fila']*100:.0f}% | {r['mais_novo']*100:.0f}% | "
+              f"{r['f2_so']*100:.0f}% | {r['valor']*100:.0f}% | {r['grupo']*100:.0f}% | {r['pct_topo_0_14']*100:.0f}% | "
+              f"{r['pct_topo_91_138']*100:.0f}% |")
+
+    print("\n## Configuração antiga (04 v1: 40/35/25, curva sem piso) vs atual, mesmos cortes\n")
+    ra = [rodar(p, products, teams, T, ScoringConfig(**ANTIGA)) for T in CORTES]
+    ra = [r for r in ra if r]
+    print("| Configuração | Fila: mediana (min–máx) | Vitórias sobre mais novo primeiro |")
+    print("|---|---|---|")
+    print(f"| antiga 40 / 35 / 25, vale da curva | {resumo(ra, 'fila')} | {vitorias(ra, 'fila', 'mais_novo')} |")
+    print(f"| atual 55 / 20 / 25, vale com piso 35 | {resumo(rs, 'fila')} | {vitorias(rs, 'fila', 'mais_novo')} |")
+    print("\n(As duas rodam na curva com censura do B1; a curva antiga sem censura não existe mais no motor.)")
+
+    print("\n## Os três cortes do 05 (v1), refeitos com a população completa\n")
+    print("| T | Fila (05 v1, só quem fechou) | Fila agora | Mais novo | Valor | Grupo |")
     print("|---|---|---|---|---|---|")
-    base = {}
-    for T in CORTES:
-        r = rodar_config(p, products, teams, T, ScoringConfig())
-        base[T] = r
-        print(f"| {T.date()} | {r['n_calib']} | {r['n_eval']} | {r['k']} | {r['wr_grupo']*100:.1f}% | {r['wr_topo_valor']*100:.1f}% |")
+    v1 = {pd.Timestamp("2017-07-01"): 46.7, pd.Timestamp("2017-08-15"): 37.6, pd.Timestamp("2017-10-01"): 40.3}
+    for T in CORTES_ANTIGOS:
+        r = rodar(p, products, teams, T, ScoringConfig(**ATUAL))
+        print(f"| {T.date()} | {v1[T]:.1f}% | {r['fila']*100:.1f}% | {r['mais_novo']*100:.1f}% | {r['valor']*100:.1f}% | {r['grupo']*100:.1f}% |")
 
-    cols = " | ".join(f"T={T.date()}" for T in CORTES)
-
-    print(f"\n## Métrica da fila: dos top 20%, quantos tiveram desfecho (ganho ou perda) em {JANELA_DIAS} dias após T\n")
-    print(f"| Configuração | Pesos F2 / F1 / F3 | Vale | {cols} | Média | vs grupo | vs valor |")
-    print("|---|---|---|" + "---|" * len(CORTES) + "---|---|---|")
-    for nome, kw in [("antiga (04 v1)", ANTIGA), ("nova (05)", NOVA)]:
-        cfg = ScoringConfig(**kw)
-        rs = [rodar_config(p, products, teams, T, cfg) for T in CORTES]
-        vale = "20" if kw.get("vale_minimo") == 0 else str(cfg.vale_minimo)
-        media = sum(r["dec14_topo_score"] for r in rs) / len(rs)
-        mg = sum(r["dec14_grupo"] for r in rs) / len(rs)
-        mv = sum(r["dec14_topo_valor"] for r in rs) / len(rs)
-        celulas = " | ".join(f"{r['dec14_topo_score']*100:.1f}%" for r in rs)
-        print(f"| {nome} | {cfg.w_f2} / {cfg.w_f1} / {cfg.w_f3} | {vale} | {celulas} | **{media*100:.1f}%** | "
-              f"{(media-mg)*100:+.1f} pp | {(media-mv)*100:+.1f} pp |")
-    rs = [rodar_config(p, products, teams, T, ScoringConfig()) for T in CORTES]
-    print("| ordenar por valor | — | — | " + " | ".join(f"{r['dec14_topo_valor']*100:.1f}%" for r in rs)
-          + f" | **{sum(r['dec14_topo_valor'] for r in rs)/len(rs)*100:.1f}%** | | |")
-    print("| média do grupo | — | — | " + " | ".join(f"{r['dec14_grupo']*100:.1f}%" for r in rs)
-          + f" | **{sum(r['dec14_grupo'] for r in rs)/len(rs)*100:.1f}%** | | |")
-
-    print(f"\n### Mesma métrica na grade inteira (desfecho em {JANELA_DIAS} dias, top 20%)\n")
-    print(f"| Vale (15–60) | Pesos F2 / F1 / F3 | {cols} | Média | vs valor |")
-    print("|---|---|" + "---|" * len(CORTES) + "---|---|")
-    for vale in VALES:
-        for w1 in PESOS_F1:
-            cfg = ScoringConfig(w_f1=w1, w_f2=40 + (35 - w1), w_f3=25, vale_minimo=0, f2_overrides=(("15–60", vale),))
-            rs = [rodar_config(p, products, teams, T, cfg) for T in CORTES]
-            media = sum(r["dec14_topo_score"] for r in rs) / len(rs)
-            mv = sum(r["dec14_topo_valor"] for r in rs) / len(rs)
-            marca = " ← nova" if (vale == 35 and w1 == 20) else (" ← antiga" if (vale == 20 and w1 == 35) else "")
-            print(f"| {vale} | {cfg.w_f2} / {cfg.w_f1} / {cfg.w_f3}{marca} | "
-                  + " | ".join(f"{r['dec14_topo_score']*100:.1f}%" for r in rs)
-                  + f" | **{media*100:.1f}%** | {(media-mv)*100:+.1f} pp |")
-
-    print("\n## Métrica de probabilidade (a que a fila NÃO promete): win rate dos top 20%\n")
-    print(f"| Vale (15–60) | Pesos F2 / F1 / F3 | {cols} | Média | vs grupo | vs valor |")
-    print("|---|---|" + "---|" * len(CORTES) + "---|---|---|")
-    linhas = []
-    for vale in VALES:
-        for w1 in PESOS_F1:
-            cfg = ScoringConfig(w_f1=w1, w_f2=40 + (35 - w1), w_f3=25, vale_minimo=0, f2_overrides=(("15–60", vale),))
-            rs = [rodar_config(p, products, teams, T, cfg) for T in CORTES]
-            media = sum(r["wr_topo_score"] for r in rs) / len(rs)
-            media_grupo = sum(r["wr_grupo"] for r in rs) / len(rs)
-            media_valor = sum(r["wr_topo_valor"] for r in rs) / len(rs)
-            celulas = " | ".join(f"{r['wr_topo_score']*100:.1f}%" for r in rs)
-            marca = " ← antiga" if (vale == 20 and w1 == 35) else (" ← nova" if (vale == 35 and w1 == 20) else "")
-            print(f"| {vale} | {cfg.w_f2} / {cfg.w_f1} / {cfg.w_f3}{marca} | {celulas} | **{media*100:.1f}%** | "
-                  f"{(media-media_grupo)*100:+.1f} pp | {(media-media_valor)*100:+.1f} pp |")
-            linhas.append((vale, w1, rs))
-
-    print("\n## Grade: win rate dos top 50% (alcança o vale)\n")
-    print(f"| Vale (15–60) | Pesos F2 / F1 / F3 | {cols} | Média | vs grupo | vs valor | % do top 50% que está no vale (média) |")
-    print("|---|---|" + "---|" * len(CORTES) + "---|---|---|---|")
-    for vale, w1, rs in linhas:
-        media = sum(r["wr_topo50_score"] for r in rs) / len(rs)
-        media_grupo = sum(r["wr_grupo"] for r in rs) / len(rs)
-        media_valor = sum(r["wr_topo50_valor"] for r in rs) / len(rs)
-        no_vale = sum(r["pct_topo50_vale"] for r in rs) / len(rs)
-        celulas = " | ".join(f"{r['wr_topo50_score']*100:.1f}%" for r in rs)
-        marca = " ← antiga" if (vale == 20 and w1 == 35) else (" ← nova" if (vale == 35 and w1 == 20) else "")
-        print(f"| {vale} | {40 + (35 - w1)} / {w1} / 25{marca} | {celulas} | **{media*100:.1f}%** | "
-              f"{(media-media_grupo)*100:+.1f} pp | {(media-media_valor)*100:+.1f} pp | {no_vale*100:.0f}% |")
-    print("\nReferência top 50% por valor: " + " · ".join(f"T={T.date()}: {base[T]['wr_topo50_valor']*100:.1f}%" for T in CORTES))
-
-    print("\n## O que está no topo (config nova, por corte)\n")
-    print("| T | % do topo em janela crítica (≤14 d) | % do topo em última janela (91–138 d) | idade mediana do topo | Win rate topo | Win rate grupo |")
-    print("|---|---|---|---|---|---|")
-    for T in CORTES:
-        r = base[T]
-        print(f"| {T.date()} | {r['pct_topo_janela_critica']*100:.0f}% | {r['pct_topo_ultima_janela']*100:.0f}% | "
-              f"{r['idade_mediana_topo']:.0f} | {r['wr_topo_score']*100:.1f}% | {r['wr_grupo']*100:.1f}% |")
-
-    print("\n## Win rate por zona de idade EM T (o que o F2 está ordenando)\n")
-    print("| T | 0–14 | 15–60 | 61–90 | 91–138 |")
-    print("|---|---|---|---|---|")
-    for T in CORTES:
-        calib_set, eval_open, won, _ = conjuntos(p, T)
-        idade = (T - eval_open["engage_date"]).dt.days
-        z = pd.cut(idade, [-1, 14, 60, 90, 138], labels=["0–14", "15–60", "61–90", "91–138"])
-        w = won.loc[eval_open["opportunity_id"]].to_numpy()
-        partes = []
-        for nome in ["0–14", "15–60", "61–90", "91–138"]:
-            m = (z == nome).to_numpy()
-            partes.append(f"{w[m].mean()*100:.0f}% (n={m.sum()})" if m.sum() else "—")
-        print(f"| {T.date()} | " + " | ".join(partes) + " |")
+    print("\n## Grade de pesos na métrica de 14 dias (só para mostrar que F1 e F3 não a movem)\n")
+    print("| Pesos F2 / F1 / F3 | Fila: mediana (min–máx) | Vitórias sobre mais novo |")
+    print("|---|---|---|")
+    for w2, w1, w3 in [(55, 20, 25), (40, 35, 25), (75, 0, 25), (100, 0, 0), (0, 50, 50)]:
+        rg = [rodar(p, products, teams, T, ScoringConfig(w_f2=w2, w_f1=w1, w_f3=w3)) for T in CORTES]
+        rg = [r for r in rg if r]
+        print(f"| {w2} / {w1} / {w3} | {resumo(rg, 'fila')} | {vitorias(rg, 'fila', 'mais_novo')} |")
 
 
 if __name__ == "__main__":
     main()
-
-
-def dias_ate_a_perda(pipeline: pd.DataFrame) -> None:
-    """Dos deals em cada zona em T que depois PERDERAM: quantos dias de T até a perda."""
-    print("\n## Quantos dias o vendedor tem: dias de T até a perda, deals que perderam (mediana · p75)\n")
-    print("| T | 0–14 em T | 15–60 em T | 61–90 em T |")
-    print("|---|---|---|---|")
-    for T in CORTES:
-        _, eval_open, won, _ = conjuntos(pipeline, T)
-        ev = eval_open.assign(won=won.loc[eval_open["opportunity_id"]].to_numpy(),
-                              idade=(T - eval_open["engage_date"]).dt.days)
-        closed = pipeline.set_index("opportunity_id")["close_date"]
-        ev["dias_ate_fechar"] = (pd.Series(closed.loc[ev["opportunity_id"]].to_numpy(), index=ev.index) - T).dt.days
-        partes = []
-        for lo, hi in [(0, 14), (15, 60), (61, 90)]:
-            m = ev[(ev["idade"].between(lo, hi)) & (~ev["won"])]["dias_ate_fechar"]
-            partes.append(f"{m.median():.0f} · {m.quantile(0.75):.0f} (n={len(m)})" if len(m) else "—")
-        print(f"| {T.date()} | " + " | ".join(partes) + " |")
-
-
-if __name__ == "__main__":
-    dias_ate_a_perda(load_crm().pipeline)

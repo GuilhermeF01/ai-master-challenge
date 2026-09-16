@@ -70,6 +70,8 @@ Sobre o grupo a fila ainda faz ~1,6× (não "o dobro"); mas veja B3 para o basel
 
 **O que eu faria.** População de avaliação = todos os deals em Engaging em T (fechados depois **ou** ainda abertos em 31/12), desfecho binário "fechou até T+14". Restringir T ≤ 17/12 para a janela de 14 dias ser observável. E cortes semanais, não três (ver I1).
 
+> **Resposta — aceito, corrigido (commit "fix(B2,B3,I1)").** População = todos os deals em Engaging em T (fecharam depois **ou** nunca fecharam até 31/12), desfecho = fechou até T+14, quem nunca fechou conta zero; T ≤ 17/12. Nos três cortes da v1: 46,7 → 27,0%, 37,6 → 13,4%, 40,3 → 28,7%. Bate com os seus 27,0 / 15,9 / 22,4 (a diferença é a curva do B1, que agora está no motor). O "o dobro" da v1 era sobrevivência e saiu do 05.
+
 ### B3. O baseline "ordenar por valor" não é baseline para uma métrica de tempo. Contra "mais novo primeiro" a fila empata ou perde
 
 **Onde:** `backtest.py:53-66` e `:88`; `05-backtest.md`, tabela (a) e "Decisão", item 1.
@@ -87,6 +89,10 @@ Ainda no método: a métrica "desfecho em 14 dias" é a mesma taxa que calibra o
 
 **O que eu faria.** Reportar fila vs "mais novo primeiro" vs F2 sozinho, na população do B2, em cortes semanais. Para F1 e F3 usar uma métrica que eles possam afetar (ex.: valor ganho em 90 dias pelo top 20%).
 
+> **Resposta — aceito, corrigido.** Baselines agora: mais novo primeiro (`engage_date` desc), F2 sozinho, valor, grupo. Em 37 cortes semanais com população completa: fila 24,7% (12–50), mais novo 24,4% (12–48), fila vence em 19 / 37 — empate. Contra valor e acaso, ~1,6× em 29–31 / 37. O 05 v2 escreve isso na leitura principal: o sinal de tempo da fila é o que a data de engajamento já dá.
+>
+> Sobre F1 e F3: aceito integralmente. O 05 agora diz que a métrica de 14 dias não consegue medi-los (grade 55/20/25 → 100/0/0 varia dentro do ruído; 0/50/50 cai ao acaso), que "as duas rodadas dizem a mesma coisa" era falso, e que o peso 20 do F1 fica **só** pelo AUC 0,515 do 03-D. A métrica que os validaria (valor ganho em 90 dias pelo top 20%) fica registrada como trabalho não feito — não a rodei.
+
 ---
 
 ## IMPORTANTE
@@ -98,6 +104,8 @@ Ainda no método: a métrica "desfecho em 14 dias" é a mesma taxa que calibra o
 Fechamentos entre 02/07 e 15/07: 299 deals, **100% com ≤ 14 dias de idade**; entre 02/10 e 15/10: 269, também 100%. Entre 16/08 e 29/08: 69 / 64 / 136 / 76 nas quatro zonas. As coortes engajadas em abril, julho e outubro são majoritariamente curtas (505, 530, 497 deals em 0–14 contra ~100 nas outras faixas); a dataset é sintética e engaja/fecha em blocos. Os dois cortes onde a fila brilha (01/07 e 01/10) caem em semanas em que **só deal novo fecha**, o que qualquer regra "novo primeiro" acerta; o de 15/08 é onde o braço direito trabalhou (e "mais velho primeiro" faz 53,8% ali). "Não sei o motivo" no 05 é isso. Também: os cortes se sobrepõem (538 deals em comum entre 01/07 e 15/08; 197 entre 15/08 e 01/10), então o "≈ 2 pp na média dos três" assume independência que não existe.
 
 **O que eu faria.** Cortes semanais, reportar mediana e amplitude; registrar em Limitações que o padrão de calendário é da dataset, não do negócio.
+
+> **Resposta — aceito, corrigido.** 37 cortes semanais (03/04 a 11/12), resumo por mediana e amplitude, tabela por corte no 05. A explicação do 15/08 e dos blocos de fechamento (02–15/07 e 02–15/10 com 100% de deals ≤ 14 dias) está na seção "Estrutura de calendário" do 05 e vai para as Limitações do README como padrão do dataset, não do negócio. A média dos três cortes com "≈ 2 pp de ruído" saiu.
 
 ### I2. Peso 20 do F1 e o rótulo "Confiança" contam uma história que a evidência não sustenta
 
