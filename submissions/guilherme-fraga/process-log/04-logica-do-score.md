@@ -72,6 +72,7 @@ A coluna "por dia" é o U: 2,6–3,8% nos primeiros 14 dias, cai para 0,5% entre
 | **91–138 dias** | **100** | Última janela antes da parede: **80% dos que fecham já fecharam aos 90**, 100% dos vivos são decididos aqui, nenhum deal passou de 138. |
 
 - O vale (15–60) sai da fórmula em 19, arredondado para 20. É mais baixo que "médio = 50" porque os dados dizem que a faixa é calma mesmo; se quiser um piso mais alto, é um número só para mudar, mas as pontas perdem contraste.
+  - **Ressalva registrada na aprovação:** 20 parece baixo — um deal de 45 dias com encaixe bom e valor alto fica atrás de quase todo deal novo. Fica em 20 por enquanto, sem mudar no chute; **revisar depois do backtest, com número na mão.**
 - 61–90 fica como degrau próprio (65) e não dentro do "médio" porque a curva mostra uma segunda onda ali — um quarto de todos os desfechos.
 - As duas pontas ficam em 100: a categoria e os marcadores dizem qual é qual (*janela crítica* ≤ 14 / *última janela* 91–138). Dentro da mesma pontuação de F2, F1 e F3 desempatam.
 - A curva é calculada dos dados na hora de rodar, não é hard-coded — se o CSV mudar, os degraus mudam. Os cortes de faixa (14 / 60 / 90 / 138) são fixos.
