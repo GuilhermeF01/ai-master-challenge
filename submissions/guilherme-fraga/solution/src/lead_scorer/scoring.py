@@ -1,4 +1,4 @@
-"""Scoring: três fatores, categorias de ação, confiança e frases.
+"""Scoring: três fatores, categorias de ação, base do histórico e frases.
 
 Implementa process-log/04-logica-do-score.md. O score é FILA DE ATENÇÃO,
 não probabilidade de fechar.
@@ -36,8 +36,8 @@ class ScoringConfig:
     w_f1: int = 20  # encaixe vendedor×produto (era 35; encaixe é contexto, não motor)
     w_f3: int = 25  # valor em jogo
     f1_scale_pp: float = 15.0  # ±15 pp em torno da média geral cobre 0–100
-    conf_alta: int = 50  # n da célula para confiança Alta
-    conf_media: int = 20  # n da célula para confiança Média
+    base_ampla: int = 50  # n da célula para "base do histórico: ampla"
+    base_media: int = 20  # n da célula para "base do histórico: média" (abaixo: pequena)
     # Zonas do U (cortes fixos; a parede vem dos dados)
     zone_edges: tuple[int, int, int] = (14, 60, 90)
     # Faixas finas usadas para medir "decididos por dia"
@@ -252,7 +252,7 @@ def factor_fit(agent: str, product: str, calib: Calibration) -> tuple[float, str
     else:
         suav, n_cell = float(c["suav"]), int(c["n"])
         won, raw = int(c["won"]), float(c["raw"])
-        if n_cell < cfg.conf_media:
+        if n_cell < cfg.base_media:
             frase = (f"Seu histórico em {product} é {won} de {n_cell} ({_pct(raw)}). Base pequena: "
                      f"o score usa {_pct(suav)} (puxado para a sua média de {_pct(v['raw'])}).")
         elif suav >= g:
@@ -370,12 +370,13 @@ def score_open_deals(
         if categoria == "Agir" and age >= cfg.ultima_janela_min:
             marcadores.append("última janela")
 
-        if n_cell >= cfg.conf_alta:
-            conf = "Alta"
-        elif n_cell >= cfg.conf_media:
-            conf = "Média"
+        # Base do histórico: tamanho da amostra do F1 (só do F1 — o F2 não tem medida equivalente)
+        if n_cell >= cfg.base_ampla:
+            base = "ampla"
+        elif n_cell >= cfg.base_media:
+            base = "média"
         else:
-            conf = "Baixa"
+            base = "pequena"
 
         t = team.loc[d.sales_agent] if d.sales_agent in team.index else None
         conta = d.account if isinstance(d.account, str) and d.account else None
@@ -396,7 +397,7 @@ def score_open_deals(
             "categoria": categoria,
             "ordem_categoria": CATEGORIES[categoria],
             "score": round(score, 1) if pd.notna(score) else np.nan,
-            "confianca": conf,
+            "base_historico": base,
             "n_celula": n_cell,
             "F1": round(f1, 1),
             "F2": f2,

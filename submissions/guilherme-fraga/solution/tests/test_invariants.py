@@ -184,11 +184,12 @@ def test_empate_no_score_janela_critica_primeiro(scored):
         assert flags == sorted(flags, reverse=True), f"score {score}: janela crítica deveria vir antes"
 
 
-def test_confianca(scored):
+def test_base_do_historico(scored):
     n = scored["n_celula"]
-    assert (scored.loc[n >= 50, "confianca"] == "Alta").all()
-    assert (scored.loc[(n >= 20) & (n < 50), "confianca"] == "Média").all()
-    assert (scored.loc[n < 20, "confianca"] == "Baixa").all()
+    assert (scored.loc[n >= 50, "base_historico"] == "ampla").all()
+    assert (scored.loc[(n >= 20) & (n < 50), "base_historico"] == "média").all()
+    assert (scored.loc[n < 20, "base_historico"] == "pequena").all()
+    assert "confianca" not in scored.columns  # renomeado (revisão I2): mede amostra do F1, não confiança no score
 
 
 def test_marcadores(scored):

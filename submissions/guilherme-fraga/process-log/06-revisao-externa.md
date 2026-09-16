@@ -115,6 +115,8 @@ Fora do período o encaixe vendedor × produto quase não ordena (AUC 0,515; ven
 
 **O que eu faria.** Ou tirar o F1 do número (a grade com 75 / 0 / 25 deu o mesmo resultado; a frase de histórico continua no card como contexto, que é o que o 04 já diz que ele é), ou validar o F1 com uma métrica que ele possa mover. Renomear "Confiança" para "base do histórico" ou calcular a confiança a partir do que manda no score.
 
+> **Resposta — aceito na parte do rótulo, corrigido (commit "fix(I2,I3)"); a parte do peso fica como está, e digo por quê.** "Confiança" virou **base do histórico** (`base_historico`: ampla / média / pequena), no motor, no CSV, no app (com *help* dizendo que é amostra do F1, não confiança no score) e no 04. Sobre tirar o F1 do número: o 05 v2 registra que o backtest não mede F1 e que o peso 20 fica só pelo AUC 0,515 — é a mesma evidência que você cita. A decisão de manter 20 em vez de 0 é de produto (a frase de histórico com um número que pesa algo é mais honesta com o vendedor do que uma frase que pesa zero) e está marcada como não validada. Se a decisão final do 05 for tirar, é um número na config.
+
 ### I3. A fila de Agir é, na prática, ordem por zona; F1 e F3 só desempatam. A de Engajar é ordem por preço
 
 **Onde:** `scoring.py:301` e `:304`; `04`, "Pesos" e "Categorias de ação".
@@ -122,6 +124,8 @@ Fora do período o encaixe vendedor × produto quase não ordena (AUC 0,515; ven
 Degraus 100 / 65 / 35 × 0,55 = saltos de 19,3 e 16,5 pontos; F1 real vai de 8 a 85, ou seja ≤ 15,4 pontos. Em 31/12, só **2,3%** dos pares entre zonas diferentes (527 de 22.735) têm a ordem de zona invertida por F1 + F3; o primeiro deal de 61–90 aparece na posição 158 e o primeiro do vale na 230 de 298. Isso explica por que a grade do 05 é plana: os pesos quase não importam. Não é bug, mas o 04 deveria dizer "a ordem é zona, depois preço, depois encaixe" em vez de apresentar três fatores ponderados. Em Engajar (500 deals, F3 = 55% do peso), 92% dos pares estão na mesma ordem que `sales_price`; o F1 ordena 53% (moeda). O README do challenge diz "não é só ordenar por valor"; a lista de Engajar é.
 
 **O que eu faria.** Escrever isso nas Limitações; em Engajar, admitir que sem data não há sinal e a lista é de valor.
+
+> **Resposta — aceito, escrito no 04 — com um número diferente do seu, porque a correção B1 mudou a fila.** Com o braço direito em 100 a ordem era zona → preço → encaixe (2,3% dos pares entre zonas invertidos, como você mediu). Com a curva corrigida (48 / 38 / 35 fora da janela crítica), 33% dos pares entre zonas são invertidos por F1 + F3, e fora da janela crítica **a ordem segue o preço em 91% dos pares**. O 04 agora diz: Agir = janela crítica → preço → encaixe → zona; Engajar = lista de valor (92% dos pares em ordem de preço), com o encaixe desempatando — e a legenda do app diz o mesmo.
 
 ### I4. Não existe README com Setup / Lógica / Limitações
 

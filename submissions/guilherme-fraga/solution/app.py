@@ -103,7 +103,7 @@ def cartao_deal(pos: int, d: pd.Series, mostrar_vendedor: bool = False) -> None:
                             f"<div style='opacity:.7'>score · #{pos}</div>", unsafe_allow_html=True)
             else:
                 st.markdown("<div style='font-size:1.6rem;font-weight:700'>Decidir</div>", unsafe_allow_html=True)
-            st.caption(f"confiança **{d['confianca']}** · {d['n_celula']} deals seus em {d['produto']}")
+            st.caption(f"base do histórico **{d['base_historico']}** · {d['n_celula']} deals seus em {d['produto']}")
         with dir_:
             titulo = f"**{d['produto']}** · {d['conta'] if pd.notna(d['conta']) else '_sem conta no CRM_'}"
             if mostrar_vendedor:
@@ -148,6 +148,7 @@ def tabela(df: pd.DataFrame, colunas: list[str]) -> None:
             "valor_produto": st.column_config.NumberColumn("valor (USD)", format="%d"),
             "idade_dias": st.column_config.NumberColumn("dias", format="%d"),
             "engage_date": st.column_config.DateColumn("engajado em"),
+            "base_historico": st.column_config.TextColumn("base do histórico", help="Tamanho da amostra do encaixe (F1): quantos deals fechados o vendedor tem nesse produto. Não é confiança no score."),
             "F1": st.column_config.NumberColumn("F1 encaixe", format="%.0f"),
             "F2": st.column_config.NumberColumn("F2 atenção", format="%.0f"),
             "F3": st.column_config.NumberColumn("F3 valor", format="%.0f"),
@@ -156,7 +157,7 @@ def tabela(df: pd.DataFrame, colunas: list[str]) -> None:
 
 
 COLS_TABELA = ["opportunity_id", "categoria", "score", "produto", "conta", "idade_dias", "valor_produto",
-               "confianca", "marcadores", "F1", "F2", "F3", "frase_F1", "frase_F2", "frase_F3"]
+               "base_historico", "marcadores", "F1", "F2", "F3", "frase_F1", "frase_F2", "frase_F3"]
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +190,7 @@ def tela_vendedor(df: pd.DataFrame, meta: dict, vendedores: list[str]) -> None:
 
     engajar = meu[meu["categoria"] == "Engajar"]
     st.subheader("Para engajar", anchor=False)
-    st.caption("Prospecting não tem data: o score usa só encaixe e valor — sem sinal de tempo.")
+    st.caption("Prospecting não tem data: sem sinal de tempo, a lista é essencialmente por valor do produto; o encaixe desempata.")
     if engajar.empty:
         st.write("Nenhum deal em Prospecting.")
     else:
@@ -256,7 +257,7 @@ def tela_manager(df: pd.DataFrame, meta: dict, escopo: str) -> None:
     st.caption("Os maiores primeiro. Cada linha é um deal que o histórico diz que não vai fechar sozinho: "
                "requalificar ou descartar.")
     decidir = df[df["categoria"] == "Decidir"]
-    tabela(decidir, ["vendedor", "produto", "conta", "idade_dias", "valor_produto", "confianca", "frase_F1"])
+    tabela(decidir, ["vendedor", "produto", "conta", "idade_dias", "valor_produto", "base_historico", "frase_F1"])
 
     st.subheader("Agir — topo da fila do time", anchor=False)
     agir = df[df["categoria"] == "Agir"]

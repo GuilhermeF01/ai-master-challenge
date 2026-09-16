@@ -136,6 +136,13 @@ A **categoria manda na ordem**; o score desempata **dentro** dela.
 
 - Engaging antes de Prospecting porque está mais perto do dinheiro; Decidir por último porque não é trabalho de venda.
 - **Empate no score dentro de Agir: janela crítica (≤ 14 dias) primeiro** — ali a perda é questão de dias. (Ajuste feito ao ver o app: Boris Faz tinha dois GTX Pro com 81, o de 117 dias na frente do de 12.)
+
+### O que a ordem é, na prática ([revisão externa](06-revisao-externa.md), I3)
+
+Três fatores ponderados é como o score é calculado; não é como a fila se comporta. Medido no pipeline de 31/12:
+
+- **Agir:** a **janela crítica vem sempre primeiro** — F2 = 100 × 0,55 dá 28 pontos de vantagem sobre a zona seguinte, mais que o alcance somado de F1 (8–85 × 0,20 = 15 pontos) e F3 (25 pontos). Fora dela, os degraus 48 / 38 / 35 estão a menos de 7 pontos uns dos outros e **a ordem segue o preço do produto em 91% dos pares**, o encaixe em 67%, a zona em 64%. Ou seja: janela crítica → preço → encaixe → zona. (Antes da correção B1, com o braço direito em 100, a ordem era zona → preço → encaixe: só 2,3% dos pares entre zonas eram invertidos por F1 + F3; agora são 33%.)
+- **Engajar:** sem data não há sinal de tempo. F3 pesa 25 / 45 = 56% e **a lista segue o preço em 92% dos pares**; o F1 ordena 53% (moeda). É uma lista de valor com o encaixe desempatando, e o app diz isso na legenda. O README do challenge pede "não é só ordenar por valor" — para Prospecting, com estes dados, é quase isso, e fica declarado.
 - Marcadores dentro de Agir (rótulo, não categoria): **janela crítica** (≤ 14 dias) e **última janela** (91–138 dias). O F2 já carrega a urgência no número; o marcador só nomeia qual das duas pontas do U o deal está.
 - Regra fixa de dados: **não existe deal fechado sem passar por Engaging** (H1). Prospecting nunca vai direto para Decidir.
 
@@ -153,17 +160,19 @@ A **categoria manda na ordem**; o score desempata **dentro** dela.
 
 Ou seja: na data de referência, 81% dos deals em Engaging estão além da parede. A fila de trabalho tem 798 deals; a lista de decisão tem 1.291. É o retrato do snapshot, não um bug — e é o argumento mais forte do app para a Head de RevOps.
 
-## Confiança (separada do score)
+## Base do histórico (separada do score)
 
-Baseada em **quantos deals fechados o vendedor tem naquele produto** (n da célula), porque é o único fator com base amostral por deal — a curva de idade usa os 6.711 fechados e o valor é tabela.
+> Chamava-se "Confiança" até a [revisão externa](06-revisao-externa.md), I2. O rótulo media o tamanho da amostra do **F1** — um fator que pesa 20% e que fora do período quase não ordena (AUC 0,515) — e o vendedor lia "Confiança Alta" como "esse score é confiável". O fator que manda na ordem (F2) não tem medida equivalente. Renomeado para o que é.
 
-| Confiança | n da célula |
+**Base do histórico** = quantos deals fechados o vendedor tem naquele produto (n da célula do F1). Diz quanto a frase "você fecha X em N de M" tem amostra atrás; não diz nada sobre o F2 nem sobre o score.
+
+| Base do histórico | n da célula |
 |---|---|
-| Alta | ≥ 50 |
-| Média | 20–49 |
-| Baixa | < 20 (inclui 0) |
+| ampla | ≥ 50 |
+| média | 20–49 |
+| pequena | < 20 (inclui 0) |
 
-Prospecting acrescenta a frase "sem sinal de tempo" mas não rebaixa a confiança — são coisas diferentes e o app mostra as duas.
+Prospecting acrescenta a frase "sem sinal de tempo"; são coisas diferentes e o app mostra as duas.
 
 ## Teste obrigatório: `close_value` e `close_date` não entram
 
@@ -179,7 +188,7 @@ Além desses: teste de que a soma dos pesos dá 100 (e 45 renormalizado para Pro
 
 ```
 opportunity_id, vendedor, manager, região, produto, conta (ou "—"),
-categoria, score (0–100 ou "—" em Decidir), confiança,
+categoria, score (0–100 ou "—" em Decidir), base do histórico,
 F1, F2, F3, frase_F1, frase_F2, frase_F3, marcadores (ex.: "janela crítica", "última janela")
 ```
 
